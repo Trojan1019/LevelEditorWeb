@@ -417,7 +417,7 @@ export default function App() {
         <button type="button" className="primary" onClick={pickDirectory}>
           选择关卡目录
         </button>
-        <button type="button" onClick={saveCurrent} disabled={!dirHandle || !current}>
+        <button type="button" onClick={saveCurrent} disabled={!current}>
           保存当前
         </button>
         <button type="button" onClick={newLevel}>
