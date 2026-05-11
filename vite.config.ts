@@ -6,10 +6,11 @@ export default defineConfig({
   base: "./",
   plugins: [react()],
   build: {
+    outDir: "docs",
     cssCodeSplit: false,
     rollupOptions: {
       output: {
-        // Keep stable names so root index.html can reference dist assets directly.
+        // Keep stable names so root index.html can reference built assets directly.
         inlineDynamicImports: true,
         entryFileNames: "assets/index.js",
         chunkFileNames: "assets/index.js",
