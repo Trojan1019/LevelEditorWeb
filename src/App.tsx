@@ -25,6 +25,26 @@ function hasFsAccess(): boolean {
   return typeof window !== "undefined" && "showDirectoryPicker" in window;
 }
 
+function browserHintName(): string {
+  if (typeof navigator === "undefined") {
+    return "当前浏览器";
+  }
+  const ua = navigator.userAgent;
+  if (ua.includes("Edg/")) {
+    return "Edge";
+  }
+  if (ua.includes("Chrome/") && !ua.includes("Edg/")) {
+    return "Chrome";
+  }
+  if (ua.includes("Firefox/")) {
+    return "Firefox";
+  }
+  if (ua.includes("Safari/") && !ua.includes("Chrome/")) {
+    return "Safari";
+  }
+  return "当前浏览器";
+}
+
 function downloadText(fileName: string, text: string): void {
   const blob = new Blob([text], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -121,6 +141,8 @@ function trySaveSessionFiles(files: LoadedLevelFile[]): void {
 }
 
 export default function App() {
+  const fsSupported = hasFsAccess();
+  const browserName = browserHintName();
   const [dirHandle, setDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
   const [files, setFiles] = useState<LoadedLevelFile[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -431,6 +453,22 @@ export default function App() {
           <span style={{ color: "var(--warn)", fontSize: 12 }}>未选目录（仅导入/导出）</span>
         )}
       </header>
+      {!fsSupported ? (
+        <div
+          style={{
+            margin: "10px 10px 0",
+            padding: "8px 12px",
+            border: "1px solid var(--warn)",
+            borderRadius: 8,
+            background: "rgba(255, 193, 7, 0.08)",
+            color: "var(--text)",
+            fontSize: 13,
+          }}
+        >
+          兼容性提示：检测到你正在使用 {browserName}。当前浏览器不支持目录读写（showDirectoryPicker）。
+          你仍可使用“导入 JSON / 导出当前 JSON”；若需直接选择并保存到工程目录，请使用 Chrome 或 Edge。
+        </div>
+      ) : null}
       <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 10, padding: 10 }}>
         <aside style={{ width: 300, flexShrink: 0, minHeight: 0, display: "flex" }}>
           <LevelList
