@@ -8,5 +8,18 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if (window.location.protocol === "file:") {
+        const css = document.createElement("link");
+        css.rel = "stylesheet";
+        css.href = "./dist/assets/index.css";
+        document.head.appendChild(css);
+
+        const script = document.createElement("script");
+        script.defer = true;
+        script.src = "./dist/assets/index.js";
+        document.body.appendChild(script);
+      }
+    </script>
   </body>
 </html>
