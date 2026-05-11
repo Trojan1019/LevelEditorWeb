@@ -150,7 +150,6 @@ export default function App() {
   const [listFilter, setListFilter] = useState<ListFilter>("all");
   const [status, setStatus] = useState("");
   const [focusSlotIndex, setFocusSlotIndex] = useState<number | null>(null);
-  const [showHelp, setShowHelp] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const summaries: LevelFileSummary[] = useMemo(
@@ -447,9 +446,6 @@ export default function App() {
         <button type="button" onClick={clearCurrentCache} disabled={!current}>
           清理本地缓存
         </button>
-        <button type="button" onClick={() => setShowHelp(true)}>
-          使用说明
-        </button>
         <span style={{ color: "var(--muted)", fontSize: 12 }}>{status}</span>
         {dirHandle ? (
           <span style={{ color: "var(--ok)", fontSize: 12 }}>已连接目录</span>
@@ -457,64 +453,6 @@ export default function App() {
           <span style={{ color: "var(--warn)", fontSize: 12 }}>未选目录（仅导入/导出）</span>
         )}
       </header>
-      {showHelp ? (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0, 0, 0, 0.55)",
-            zIndex: 1000,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-          }}
-          onClick={() => setShowHelp(false)}
-        >
-          <div
-            style={{
-              width: "min(860px, 100%)",
-              maxHeight: "85vh",
-              overflow: "auto",
-              background: "var(--panel)",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              padding: 16,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <strong>使用说明</strong>
-              <button type="button" onClick={() => setShowHelp(false)}>
-                关闭
-              </button>
-            </div>
-            <div style={{ display: "grid", gap: 10, fontSize: 14, lineHeight: 1.6 }}>
-              <div className="panel">
-                <strong>1) 常规使用（推荐）</strong>
-                <div>先点击「选择关卡目录」，选择 Unity 工程中的关卡目录（通常是 Assets/Game/Level）。</div>
-                <div>修改后点击「保存当前」，会直接写回对应的 level_*.json 文件。</div>
-              </div>
-              <div className="panel">
-                <strong>2) 浏览器不支持目录写入时</strong>
-                <div>Safari / Firefox 等浏览器通常不支持目录写入 API。</div>
-                <div>这时可用「导入 JSON」进行编辑，再用「导出当前 JSON」下载结果并手动覆盖文件。</div>
-              </div>
-              <div className="panel">
-                <strong>3) 常见按钮说明</strong>
-                <div>「新建」会创建新关卡；「复制」会按当前关卡复制一份并分配新 Id。</div>
-                <div>「删除」在已连接目录时会删除磁盘文件；未连接目录时只从编辑列表移除。</div>
-                <div>「清理本地缓存」只清理浏览器缓存，不会修改磁盘上的关卡文件。</div>
-              </div>
-              <div className="panel">
-                <strong>4) 为什么点保存没反应</strong>
-                <div>请先确认已选择目录、当前关卡无校验错误，并授予了浏览器文件写入权限。</div>
-                <div>如果页面顶部出现兼容性提示，请改用 Chrome 或 Edge 进行目录读写。</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
       {!fsSupported ? (
         <div
           style={{
@@ -820,8 +758,23 @@ export default function App() {
             </>
           )}
         </main>
-        <aside style={{ width: 320, flexShrink: 0 }}>
+        <aside style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
           <ValidationPanel messages={validation} onPickSlot={(i) => setFocusSlotIndex(i)} />
+          <div className="panel" style={{ overflow: "auto", fontSize: 13, lineHeight: 1.6 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>使用说明</div>
+            <div>
+              <strong>1) 常规使用：</strong>先点「选择关卡目录」，再编辑并点「保存当前」写回 `level_*.json`。
+            </div>
+            <div>
+              <strong>2) 浏览器兼容：</strong>Safari / Firefox 通常不支持目录写入，请使用 Chrome / Edge。
+            </div>
+            <div>
+              <strong>3) 兼容模式：</strong>不支持目录写入时，使用「导入 JSON」编辑后再「导出当前 JSON」手动覆盖。
+            </div>
+            <div>
+              <strong>4) 常见问题：</strong>保存失败时先检查是否已选目录、是否有校验错误、是否授予文件权限。
+            </div>
+          </div>
         </aside>
       </div>
     </div>
