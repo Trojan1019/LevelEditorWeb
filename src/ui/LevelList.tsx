@@ -60,7 +60,7 @@ export function LevelList({ files, selectedIndex, onSelect, search, onSearchChan
   return (
     <div className="panel" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <input
-        placeholder="搜索 Id / 文件名 / TitleKey"
+        placeholder="搜索 关卡编号 / 文件名 / 标题键（TitleKey）"
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         style={{ marginBottom: 8, width: "100%" }}
@@ -76,9 +76,9 @@ export function LevelList({ files, selectedIndex, onSelect, search, onSearchChan
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
             <tr style={{ color: "var(--muted)", textAlign: "left" }}>
-              <th style={{ padding: "4px 6px" }}>Id</th>
+              <th style={{ padding: "4px 6px" }}>编号</th>
               <th style={{ padding: "4px 6px" }}>文件</th>
-              <th style={{ padding: "4px 6px" }}>牌</th>
+              <th style={{ padding: "4px 6px" }}>总牌</th>
               <th style={{ padding: "4px 6px" }}>布局</th>
             </tr>
           </thead>

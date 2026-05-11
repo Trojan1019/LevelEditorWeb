@@ -25,6 +25,26 @@ function hasFsAccess(): boolean {
   return typeof window !== "undefined" && "showDirectoryPicker" in window;
 }
 
+const WIN_MODE_LABELS: Record<number, string> = {
+  [LevelWinConditionMode.ScoreOnly]: "仅分数",
+  [LevelWinConditionMode.ObjectivesOnly]: "仅目标",
+  [LevelWinConditionMode.ScoreAndObjectives]: "分数且目标",
+  [LevelWinConditionMode.ScoreOrObjectives]: "分数或目标",
+};
+
+const HAND_TYPE_LABELS: Record<string, string> = {
+  HighCard: "高牌",
+  Pair: "一对",
+  TwoPair: "两对",
+  ThreeOfAKind: "三条",
+  Straight: "顺子",
+  Flush: "同花",
+  FullHouse: "葫芦",
+  FourOfAKind: "四条",
+  StraightFlush: "同花顺",
+  RoyalFlush: "皇家同花顺",
+};
+
 function browserHintName(): string {
   if (typeof navigator === "undefined") {
     return "当前浏览器";
@@ -488,7 +508,7 @@ export default function App() {
             <>
               <div className="panel" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
                 <label className="field">
-                  <span>Id</span>
+                  <span>关卡编号（Id）</span>
                   <input
                     type="number"
                     value={current.data.Id}
@@ -496,18 +516,18 @@ export default function App() {
                   />
                 </label>
                 <label className="field">
-                  <span>TitleKey</span>
+                  <span>标题键（TitleKey）</span>
                   <input value={current.data.TitleKey} onChange={(e) => updateData((d) => ({ ...d, TitleKey: e.target.value }))} />
                 </label>
                 <label className="field">
-                  <span>DescriptionKey</span>
+                  <span>描述键（DescriptionKey）</span>
                   <input
                     value={current.data.DescriptionKey}
                     onChange={(e) => updateData((d) => ({ ...d, DescriptionKey: e.target.value }))}
                   />
                 </label>
                 <label className="field">
-                  <span>TotalCards</span>
+                  <span>总牌数（TotalCards）</span>
                   <input
                     type="number"
                     value={current.data.TotalCards}
@@ -515,7 +535,7 @@ export default function App() {
                   />
                 </label>
                 <label className="field">
-                  <span>TargetScore</span>
+                  <span>目标分（TargetScore）</span>
                   <input
                     type="number"
                     value={current.data.TargetScore}
@@ -523,22 +543,24 @@ export default function App() {
                   />
                 </label>
                 <label className="field">
-                  <span>WinConditionMode</span>
+                  <span>胜利条件（WinConditionMode）</span>
                   <select
                     value={current.data.WinConditionMode}
                     onChange={(e) =>
                       updateData((d) => ({ ...d, WinConditionMode: parseInt(e.target.value, 10) as LevelWinConditionMode }))
                     }
                   >
-                    <option value={LevelWinConditionMode.ScoreOnly}>ScoreOnly</option>
-                    <option value={LevelWinConditionMode.ObjectivesOnly}>ObjectivesOnly</option>
-                    <option value={LevelWinConditionMode.ScoreAndObjectives}>ScoreAndObjectives</option>
-                    <option value={LevelWinConditionMode.ScoreOrObjectives}>ScoreOrObjectives</option>
+                    <option value={LevelWinConditionMode.ScoreOnly}>{WIN_MODE_LABELS[LevelWinConditionMode.ScoreOnly]}</option>
+                    <option value={LevelWinConditionMode.ObjectivesOnly}>{WIN_MODE_LABELS[LevelWinConditionMode.ObjectivesOnly]}</option>
+                    <option value={LevelWinConditionMode.ScoreAndObjectives}>
+                      {WIN_MODE_LABELS[LevelWinConditionMode.ScoreAndObjectives]}
+                    </option>
+                    <option value={LevelWinConditionMode.ScoreOrObjectives}>{WIN_MODE_LABELS[LevelWinConditionMode.ScoreOrObjectives]}</option>
                   </select>
                 </label>
               </div>
               <div className="panel">
-                <div style={{ marginBottom: 8, fontWeight: 600 }}>牌池 PoolSuits</div>
+                <div style={{ marginBottom: 8, fontWeight: 600 }}>花色池（PoolSuits）</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {SUIT_CODES.map((s) => {
                     const on = current.data.PoolSuits.includes(s);
@@ -576,7 +598,7 @@ export default function App() {
                     黑色
                   </button>
                 </div>
-                <div style={{ margin: "12px 0 8px", fontWeight: 600 }}>牌池 PoolRanks（2–14，14=A）</div>
+                <div style={{ margin: "12px 0 8px", fontWeight: 600 }}>点数池（PoolRanks，2–14，14=A）</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                   {Array.from({ length: RANK_MAX - RANK_MIN + 1 }, (_, i) => RANK_MIN + i).map((r) => {
                     const on = current.data.PoolRanks.includes(r);
@@ -615,7 +637,7 @@ export default function App() {
               </div>
               <div className="panel" style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
                 <label className="field" style={{ margin: 0 }}>
-                  <span>SpecialWild</span>
+                  <span>万能牌数量（SpecialWild）</span>
                   <input
                     type="number"
                     value={current.data.SpecialWild}
@@ -623,7 +645,7 @@ export default function App() {
                   />
                 </label>
                 <label className="field" style={{ margin: 0 }}>
-                  <span>SpecialMultiplier</span>
+                  <span>倍率牌数量（SpecialMultiplier）</span>
                   <input
                     type="number"
                     value={current.data.SpecialMultiplier}
@@ -631,7 +653,7 @@ export default function App() {
                   />
                 </label>
                 <label className="field" style={{ margin: 0 }}>
-                  <span>SpecialSuit</span>
+                  <span>花色牌数量（SpecialSuit）</span>
                   <input
                     type="number"
                     value={current.data.SpecialSuit}
@@ -645,7 +667,7 @@ export default function App() {
               </div>
               <div className="panel" style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
                 <label className="field" style={{ margin: 0 }}>
-                  <span>ItemStorage</span>
+                  <span>收纳道具次数（ItemStorage）</span>
                   <input
                     type="number"
                     value={current.data.ItemStorage}
@@ -653,7 +675,7 @@ export default function App() {
                   />
                 </label>
                 <label className="field" style={{ margin: 0 }}>
-                  <span>ItemShuffle</span>
+                  <span>洗牌道具次数（ItemShuffle）</span>
                   <input
                     type="number"
                     value={current.data.ItemShuffle}
@@ -661,7 +683,7 @@ export default function App() {
                   />
                 </label>
                 <label className="field" style={{ margin: 0 }}>
-                  <span>ItemAddWild</span>
+                  <span>加万能牌道具次数（ItemAddWild）</span>
                   <input
                     type="number"
                     value={current.data.ItemAddWild}
@@ -671,7 +693,7 @@ export default function App() {
               </div>
               <div className="panel">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <strong>特殊目标 Objectives</strong>
+                  <strong>特殊目标（Objectives）</strong>
                   <button
                     type="button"
                     onClick={() =>
@@ -687,7 +709,7 @@ export default function App() {
                 {current.data.Objectives.map((obj, idx) => (
                   <div key={idx} style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8, alignItems: "flex-end" }}>
                     <label className="field" style={{ margin: 0 }}>
-                      <span>HandType</span>
+                      <span>牌型（HandType）</span>
                       <select
                         value={obj.HandType}
                         onChange={(e) =>
@@ -700,13 +722,13 @@ export default function App() {
                       >
                         {HAND_TYPES.map((h) => (
                           <option key={h} value={h}>
-                            {h}
+                            {HAND_TYPE_LABELS[h] ? `${HAND_TYPE_LABELS[h]}（${h}）` : h}
                           </option>
                         ))}
                       </select>
                     </label>
                     <label className="field" style={{ margin: 0 }}>
-                      <span>Count</span>
+                      <span>要求次数（Count）</span>
                       <input
                         type="number"
                         value={obj.Count}
@@ -720,7 +742,7 @@ export default function App() {
                       />
                     </label>
                     <label className="field" style={{ margin: 0 }}>
-                      <span>Reward</span>
+                      <span>奖励分（Reward）</span>
                       <input
                         type="number"
                         value={obj.Reward}
@@ -763,16 +785,49 @@ export default function App() {
           <div className="panel" style={{ overflow: "auto", fontSize: 13, lineHeight: 1.6 }}>
             <div style={{ fontWeight: 700, marginBottom: 6 }}>使用说明</div>
             <div>
-              <strong>1) 常规使用：</strong>先点「选择关卡目录」，再编辑并点「保存当前」写回 `level_*.json`。
+              <strong>1) 常规流程：</strong>先点「选择关卡目录」读取 `level_*.json`，编辑后点「保存当前」写回磁盘。
             </div>
             <div>
-              <strong>2) 浏览器兼容：</strong>Safari / Firefox 通常不支持目录写入，请使用 Chrome / Edge。
+              <strong>2) 浏览器兼容：</strong>Safari / Firefox 通常不支持目录读写 API；需目录写回时请使用 Chrome / Edge。
             </div>
             <div>
-              <strong>3) 兼容模式：</strong>不支持目录写入时，使用「导入 JSON」编辑后再「导出当前 JSON」手动覆盖。
+              <strong>3) 兼容模式：</strong>不支持目录写入时，用「导入 JSON」编辑后再「导出当前 JSON」手动覆盖工程文件。
             </div>
             <div>
-              <strong>4) 常见问题：</strong>保存失败时先检查是否已选目录、是否有校验错误、是否授予文件权限。
+              <strong>4) 胜利条件逻辑：</strong>`WinConditionMode` 为 `ScoreOnly/ScoreAndObjectives/ScoreOrObjectives` 时，`TargetScore` 必须大于 0；为 `ObjectivesOnly` 时可不填分数。
+            </div>
+            <div>
+              <strong>5) Objectives 判定：</strong>当模式需要目标（`ObjectivesOnly/ScoreAndObjectives/ScoreOrObjectives`）时，`Objectives` 不能为空；`HandType` 必须合法，`Reward` 不能小于 0。
+            </div>
+            <div>
+              <strong>6) 牌池规则：</strong>`PoolSuits` 仅支持 `H/D/C/S`，`PoolRanks` 仅支持 `2~14`（14=Ace）。任一为空都无法通过校验。
+            </div>
+            <div>
+              <strong>7) 特殊牌与总牌数：</strong>`SpecialWild + SpecialMultiplier + SpecialSuit` 不能超过 `TotalCards`；特殊牌和道具初始次数都不能是负数。
+            </div>
+            <div>
+              <strong>8) BoardLayout 生效条件：</strong>`BoardLayout.length === TotalCards` 时显式布局完整生效；数量不一致会提示并可能回退到运行时自动布局。
+            </div>
+            <div>
+              <strong>9) Layer 逻辑：</strong>先比较 `Layer`，数值越大越在上层；若 `Layer` 相同，数组下标更靠后的槽位视为更上层（后绘制/后压盖）。
+            </div>
+            <div>
+              <strong>10) 点击可用判定：</strong>系统按卡牌遮挡矩形计算“可见面积比例”；当可见比例 ≥ 70% 才可点。编辑器中卡牌底部百分比即该值预览。
+            </div>
+            <div>
+              <strong>11) 坐标与吸附：</strong>拖拽时 `X/Y` 会按吸附步长对齐到网格（可调 `吸附X/吸附Y`）；`全部吸附` 会把全部槽位一次对齐。
+            </div>
+            <div>
+              <strong>12) 默认矩阵与补齐：</strong>默认矩阵按每层 4x4（16 槽）生成；奇数层会加半格 X 偏移和轻微 Y 偏移形成叠放效果。`补齐到 TotalCards` 只补不足部分。
+            </div>
+            <div>
+              <strong>13) 排序与覆盖关系：</strong>「按层排序」会按 Layer =&gt; Y =&gt; X 重排数组。重排会改变“同层时谁在上面”的关系，请在完成布局后再排序确认。
+            </div>
+            <div>
+              <strong>14) 常见保存失败原因：</strong>未选择目录、浏览器权限被拒、目标文件重名、校验报错（右侧错误项）。可先修错误，再保存。
+            </div>
+            <div>
+              <strong>15) 坐标建议：</strong>`X/Y` 绝对值过大（约超过 300）可能超出可视区域；同一 `Layer+X+Y` 重复会触发警告并导致重叠难点选。
             </div>
           </div>
         </aside>

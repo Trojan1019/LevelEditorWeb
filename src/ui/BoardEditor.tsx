@@ -217,10 +217,10 @@ export function BoardEditor({
             onChange(next);
           }}
         >
-          补齐到 TotalCards
+          补齐到总牌数（TotalCards）
         </button>
         <button type="button" onClick={() => onTotalCardsChange(boardLayout.length)}>
-          同步 TotalCards = 槽位数
+          同步总牌数 = 槽位数
         </button>
         <button
           type="button"
@@ -268,7 +268,7 @@ export function BoardEditor({
             />
           </label>
           <label className="field" style={{ margin: 0 }}>
-            <span>Layer</span>
+            <span>层级（Layer）</span>
             <input
               type="number"
               value={selectedSlot.Layer}
@@ -276,10 +276,10 @@ export function BoardEditor({
             />
           </label>
           <button type="button" onClick={() => updateSlot(selected, { Layer: selectedSlot.Layer + 1 })}>
-            Layer +1
+            层级 +1
           </button>
           <button type="button" onClick={() => updateSlot(selected, { Layer: Math.max(0, selectedSlot.Layer - 1) })}>
-            Layer -1
+            层级 -1
           </button>
           <button
             type="button"
