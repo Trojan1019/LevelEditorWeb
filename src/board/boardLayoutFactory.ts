@@ -16,6 +16,8 @@ export function appendGridSlots(slots: LevelBoardSlotData[], totalCards: number)
       X: Math.round((column - 1.5) * SOURCE_CARD_WIDTH + offsetX),
       Y: Math.round(SNAP_ORIGIN_Y + row * 38 + offsetY),
       Layer: layer,
+      Suit: "N",
+      Rank: 0,
     });
   }
 }

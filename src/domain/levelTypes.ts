@@ -1,11 +1,13 @@
 import type { LevelWinConditionMode } from "./enums";
-import type { SuitCode } from "./enums";
+import type { BoardSuitCode, SuitCode } from "./enums";
 
 /** Matches TrojanGame.Gameplay.LevelBoardSlotData */
 export interface LevelBoardSlotData {
   X: number;
   Y: number;
   Layer: number;
+  Suit: BoardSuitCode | string;
+  Rank: number;
 }
 
 /** Matches TrojanGame.Gameplay.LevelObjectiveData */
@@ -100,10 +102,13 @@ function normalizeBoardSlots(v: unknown): LevelBoardSlotData[] {
     .filter((s) => s && typeof s === "object")
     .map((s) => {
       const r = s as Record<string, unknown>;
+      const suit = typeof r.Suit === "string" && r.Suit.trim() !== "" ? r.Suit : "N";
       return {
         X: coerceInt(r.X, 0),
         Y: coerceInt(r.Y, 0),
         Layer: coerceInt(r.Layer, 0),
+        Suit: suit,
+        Rank: coerceInt(r.Rank, 0),
       };
     });
 }

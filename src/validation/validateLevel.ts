@@ -1,4 +1,4 @@
-import { LevelWinConditionMode, RANK_MAX, RANK_MIN, SUIT_CODES, isValidHandType } from "../domain/enums";
+import { BOARD_SUIT_CODES, LevelWinConditionMode, RANK_MAX, RANK_MIN, SUIT_CODES, isValidHandType } from "../domain/enums";
 import type { LevelConfigData, LevelFileSummary } from "../domain/levelTypes";
 
 export type ValidationSeverity = "error" | "warning" | "info";
@@ -9,6 +9,7 @@ export interface ValidationMessage {
 }
 
 const validSuitCodes = new Set<string>(SUIT_CODES);
+const validBoardSuitCodes = new Set<string>(BOARD_SUIT_CODES);
 
 /**
  * Mirrors TrojanGame.Editor.LevelEditorValidator.Validate
@@ -101,6 +102,13 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
       }
       if (slot.Layer < 0) {
         messages.push({ severity: "error", message: `BoardLayout[${i}] 的 Layer 不能为负数。` });
+      }
+      if (!validBoardSuitCodes.has(slot.Suit)) {
+        messages.push({ severity: "error", message: `BoardLayout[${i}] 的 Suit 只能使用 N / H / D / C / S。` });
+      } else if (slot.Suit === "N" && slot.Rank !== 0) {
+        messages.push({ severity: "error", message: `BoardLayout[${i}] 的 Suit 为 N 时 Rank 必须为 0。` });
+      } else if (slot.Suit !== "N" && (slot.Rank < RANK_MIN || slot.Rank > RANK_MAX)) {
+        messages.push({ severity: "error", message: `BoardLayout[${i}] 固定牌 Rank 必须在 2 到 14(A) 之间。` });
       }
       if (Math.abs(slot.X) > 300 || Math.abs(slot.Y) > 300) {
         messages.push({

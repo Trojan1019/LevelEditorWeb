@@ -29,5 +29,8 @@ export function isValidHandType(s: string): s is HandTypeString {
 export const SUIT_CODES = ["H", "D", "C", "S"] as const;
 export type SuitCode = (typeof SUIT_CODES)[number];
 
+export const BOARD_SUIT_CODES = ["N", ...SUIT_CODES] as const;
+export type BoardSuitCode = (typeof BOARD_SUIT_CODES)[number];
+
 export const RANK_MIN = 2;
 export const RANK_MAX = 14;

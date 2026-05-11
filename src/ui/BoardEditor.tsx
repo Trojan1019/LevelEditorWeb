@@ -10,6 +10,7 @@ import {
 } from "../board/boardConstants";
 import { appendGridSlots, createGridSlots, snapToInt, sortSlotsByLayer } from "../board/boardLayoutFactory";
 import type { LevelBoardSlotData } from "../domain/levelTypes";
+import { BOARD_SUIT_CODES, RANK_MAX, RANK_MIN, type BoardSuitCode } from "../domain/enums";
 
 interface Props {
   totalCards: number;
@@ -22,6 +23,12 @@ interface Props {
 
 const SNAP_X_STORAGE_KEY = "joker.levelEditor.snapX";
 const SNAP_Y_STORAGE_KEY = "joker.levelEditor.snapY";
+const SUIT_FILE_PREFIX: Record<string, string> = {
+  H: "hearts",
+  D: "diamonds",
+  C: "clubs",
+  S: "spades",
+};
 
 function loadSnap(key: string, fallback: number): number {
   try {
@@ -61,6 +68,45 @@ function layoutBounds(slots: LevelBoardSlotData[]): { minX: number; maxX: number
   return { minX: minX - pad, maxX: maxX + pad, minY: minY - pad, maxY: maxY + pad };
 }
 
+function rankLabel(rank: number): string {
+  if (rank === 0) {
+    return "0";
+  }
+  if (rank <= 10) {
+    return String(rank);
+  }
+  return rank === 11 ? "J" : rank === 12 ? "Q" : rank === 13 ? "K" : "A";
+}
+
+function slotFaceLabel(slot: LevelBoardSlotData): string {
+  if (slot.Suit === "N") {
+    return "N";
+  }
+  return `${slot.Suit}${rankLabel(slot.Rank)}`;
+}
+
+function publicAssetPath(path: string): string {
+  if (typeof window !== "undefined" && window.location.protocol === "file:") {
+    const normalizedPath = window.location.pathname.replace(/\\/g, "/").toLowerCase();
+    if (!normalizedPath.includes("/docs/")) {
+      return `./docs/${path}`;
+    }
+  }
+  return `${import.meta.env.BASE_URL}${path}`;
+}
+
+function cardSpriteHref(slot: LevelBoardSlotData): string | null {
+  if (slot.Suit === "N" || slot.Rank < RANK_MIN || slot.Rank > RANK_MAX) {
+    return null;
+  }
+  const prefix = SUIT_FILE_PREFIX[slot.Suit];
+  if (!prefix) {
+    return null;
+  }
+  const rank = slot.Rank <= 10 ? String(slot.Rank) : slot.Rank === 11 ? "j" : slot.Rank === 12 ? "q" : slot.Rank === 13 ? "k" : "a";
+  return publicAssetPath(`sprites/cards/${prefix}_${rank}.png`);
+}
+
 export function BoardEditor({
   totalCards,
   boardLayout,
@@ -70,6 +116,7 @@ export function BoardEditor({
   onFocusSlotConsumed,
 }: Props) {
   const [selected, setSelected] = useState<number>(-1);
+  const [pickerIndex, setPickerIndex] = useState<number>(-1);
   const [snapX, setSnapX] = useState(() => loadSnap(SNAP_X_STORAGE_KEY, DEFAULT_SNAP_STEP_X));
   const [snapY, setSnapY] = useState(() => loadSnap(SNAP_Y_STORAGE_KEY, DEFAULT_SNAP_STEP_Y));
   const dragRef = useRef<{
@@ -96,6 +143,11 @@ export function BoardEditor({
     }
     return computeVisibleRatios(boardLayout);
   }, [boardLayout, totalCards]);
+
+  const hasFixedBoardCards = useMemo(
+    () => boardLayout.some((slot) => slot.Suit !== "N" && slot.Rank >= RANK_MIN && slot.Rank <= RANK_MAX),
+    [boardLayout],
+  );
 
   const vb = useMemo(() => {
     const b = layoutBounds(boardLayout);
@@ -172,11 +224,13 @@ export function BoardEditor({
   };
 
   const selectedSlot = selected >= 0 && selected < boardLayout.length ? boardLayout[selected] : null;
+  const pickerSlot = pickerIndex >= 0 && pickerIndex < boardLayout.length ? boardLayout[pickerIndex] : null;
 
   return (
     <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <span className={`layout-status ${layoutStatus.cls}`}>{layoutStatus.text}</span>
+        {hasFixedBoardCards ? <span className="layout-status ok">固定牌面模式</span> : null}
         <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
           吸附 X
           <input type="number" value={snapX} onChange={(e) => setSnapX(Math.max(1, parseFloat(e.target.value) || 1))} />
@@ -199,7 +253,7 @@ export function BoardEditor({
         <button
           type="button"
           onClick={() => {
-            const next = [...boardLayout, { X: 0, Y: 0, Layer: 0 }];
+            const next = [...boardLayout, { X: 0, Y: 0, Layer: 0, Suit: "N" as const, Rank: 0 }];
             onChange(next);
             setSelected(next.length - 1);
           }}
@@ -275,6 +329,43 @@ export function BoardEditor({
               onChange={(e) => updateSlot(selected, { Layer: parseInt(e.target.value, 10) || 0 })}
             />
           </label>
+          <label className="field" style={{ margin: 0 }}>
+            <span>固定花色（Suit）</span>
+            <select
+              value={selectedSlot.Suit}
+              onChange={(e) => {
+                const suit = e.target.value as BoardSuitCode;
+                updateSlot(selected, {
+                  Suit: suit,
+                  Rank: suit === "N" ? 0 : selectedSlot.Rank >= RANK_MIN && selectedSlot.Rank <= RANK_MAX ? selectedSlot.Rank : RANK_MIN,
+                });
+              }}
+            >
+              {BOARD_SUIT_CODES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field" style={{ margin: 0 }}>
+            <span>固定点数（Rank）</span>
+            <select
+              value={selectedSlot.Rank}
+              disabled={selectedSlot.Suit === "N"}
+              onChange={(e) => {
+                const rank = parseInt(e.target.value, 10) || 0;
+                updateSlot(selected, { Rank: selectedSlot.Suit === "N" ? 0 : rank });
+              }}
+            >
+              <option value={0}>0</option>
+              {Array.from({ length: RANK_MAX - RANK_MIN + 1 }, (_, i) => RANK_MIN + i).map((r) => (
+                <option key={r} value={r}>
+                  {rankLabel(r)}
+                </option>
+              ))}
+            </select>
+          </label>
           <button type="button" onClick={() => updateSlot(selected, { Layer: selectedSlot.Layer + 1 })}>
             层级 +1
           </button>
@@ -311,6 +402,11 @@ export function BoardEditor({
               const next = boardLayout.filter((_, i) => i !== selected);
               onChange(next);
               setSelected(Math.min(selected, next.length - 1));
+              if (pickerIndex === selected) {
+                setPickerIndex(-1);
+              } else if (pickerIndex > selected) {
+                setPickerIndex(pickerIndex - 1);
+              }
             }}
           >
             删除槽位
@@ -362,8 +458,28 @@ export function BoardEditor({
             const clickable = clickInfo ? clickInfo[i]?.clickable : true;
             const ratio = clickInfo ? clickInfo[i]?.ratio : 1;
             const isSel = i === selected;
+            const spriteHref = cardSpriteHref(s);
             return (
-              <g key={i} transform={`translate(${rx},${ry})`} onPointerDown={(e) => onPointerDownSlot(e, i)}>
+              <g
+                key={i}
+                transform={`translate(${rx},${ry})`}
+                onPointerDown={(e) => onPointerDownSlot(e, i)}
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSelected(i);
+                  setPickerIndex(i);
+                }}
+              >
+                <title>
+                  {`Index: ${i}
+X: ${s.X}
+Y: ${s.Y}
+Layer: ${s.Layer}
+Suit: ${s.Suit}
+Rank: ${s.Rank}
+VisibleRatio: ${(ratio * 100).toFixed(0)}%`}
+                </title>
                 <rect
                   width={w}
                   height={h}
@@ -372,9 +488,31 @@ export function BoardEditor({
                   stroke={isSel ? "var(--accent)" : clickable ? "#5a6a88" : "#444"}
                   strokeWidth={isSel ? 2 : 1}
                 />
+                {spriteHref ? (
+                  <image
+                    href={spriteHref}
+                    width={w}
+                    height={h}
+                    preserveAspectRatio="xMidYMid meet"
+                    opacity={clickable ? 1 : 0.55}
+                    style={{ pointerEvents: "none" }}
+                  />
+                ) : null}
                 <text x={4} y={14} fill="#dbe5ff" fontSize={10} style={{ pointerEvents: "none" }}>
                   #{i} L{s.Layer}
                 </text>
+                {!spriteHref ? (
+                  <text
+                    x={w / 2}
+                    y={h / 2 + 5}
+                    textAnchor="middle"
+                    fill="#9aa8c8"
+                    fontSize={13}
+                    style={{ pointerEvents: "none" }}
+                  >
+                    {slotFaceLabel(s)}
+                  </text>
+                ) : null}
                 {clickInfo ? (
                   <text x={4} y={h - 6} fill="#9aa8c8" fontSize={9} style={{ pointerEvents: "none" }}>
                     {(ratio * 100).toFixed(0)}%
@@ -385,8 +523,73 @@ export function BoardEditor({
           })}
         </svg>
       </div>
+      {pickerSlot ? (
+        <div
+          className="panel"
+          style={{
+            position: "fixed",
+            right: 24,
+            bottom: 24,
+            width: 520,
+            maxWidth: "calc(100vw - 48px)",
+            maxHeight: "calc(100vh - 48px)",
+            overflow: "auto",
+            zIndex: 10,
+            boxShadow: "0 18px 60px rgba(0,0,0,0.45)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <strong>选择槽位 #{pickerIndex} 固定牌面</strong>
+            <button type="button" onClick={() => setPickerIndex(-1)}>
+              关闭
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+            <button
+              type="button"
+              className={pickerSlot.Suit === "N" ? "primary" : ""}
+              onClick={() => updateSlot(pickerIndex, { Suit: "N", Rank: 0 })}
+            >
+              不固定（N/0）
+            </button>
+            <span style={{ color: "var(--muted)" }}>当前：{slotFaceLabel(pickerSlot)}</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(13, minmax(0, 1fr))", gap: 6 }}>
+            {(["H", "D", "C", "S"] as const).flatMap((suit) =>
+              Array.from({ length: RANK_MAX - RANK_MIN + 1 }, (_, i) => RANK_MIN + i).map((rank) => {
+                const slot = { ...pickerSlot, Suit: suit, Rank: rank };
+                const href = cardSpriteHref(slot);
+                const active = pickerSlot.Suit === suit && pickerSlot.Rank === rank;
+                return (
+                  <button
+                    key={`${suit}-${rank}`}
+                    type="button"
+                    title={`${suit}${rankLabel(rank)}`}
+                    onClick={() => updateSlot(pickerIndex, { Suit: suit, Rank: rank })}
+                    style={{
+                      padding: 2,
+                      borderColor: active ? "var(--accent)" : "var(--border)",
+                      background: active ? "#2a3f7a" : "#0a0d12",
+                    }}
+                  >
+                    {href ? (
+                      <img
+                        src={href}
+                        alt={`${suit}${rankLabel(rank)}`}
+                        style={{ display: "block", width: "100%", aspectRatio: "42 / 66", objectFit: "contain" }}
+                      />
+                    ) : (
+                      `${suit}${rankLabel(rank)}`
+                    )}
+                  </button>
+                );
+              }),
+            )}
+          </div>
+        </div>
+      ) : null}
       <div style={{ color: "var(--muted)", fontSize: 11 }}>
-        拖拽移动槽位；遮挡可点预览需 BoardLayout 槽位数等于 TotalCards。可点阈值与运行时一致（可见比例 ≥ 70%）。
+        单击或拖拽移动槽位；双击槽位选择固定牌面，N/0 表示不固定。遮挡可点预览需 BoardLayout 槽位数等于 TotalCards。可点阈值与运行时一致（可见比例 ≥ 70%）。
       </div>
     </div>
   );
