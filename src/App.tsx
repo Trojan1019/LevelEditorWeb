@@ -115,6 +115,11 @@ type SessionFile = {
   dirty: boolean;
 };
 
+type EditHistory = {
+  undo: LevelConfigData[];
+  redo: LevelConfigData[];
+};
+
 function tryLoadSessionFiles(): LoadedLevelFile[] {
   try {
     const raw = localStorage.getItem(SESSION_FILES_KEY);
@@ -171,6 +176,20 @@ export default function App() {
   const [status, setStatus] = useState("");
   const [focusSlotIndex, setFocusSlotIndex] = useState<number | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const editHistoryRef = useRef<Record<string, EditHistory>>({});
+
+  const historyKeyOf = useCallback((fileName: string) => fileName, []);
+
+  const getHistory = useCallback(
+    (fileName: string): EditHistory => {
+      const key = historyKeyOf(fileName);
+      if (!editHistoryRef.current[key]) {
+        editHistoryRef.current[key] = { undo: [], redo: [] };
+      }
+      return editHistoryRef.current[key];
+    },
+    [historyKeyOf],
+  );
 
   const summaries: LevelFileSummary[] = useMemo(
     () =>
@@ -218,16 +237,85 @@ export default function App() {
         }
         const next = [...prev];
         const row = next[selectedIndex];
+        const prevData = cloneLevel(row.data);
+        const nextData = updater(cloneLevel(row.data));
+        const before = serializeLevelJson(prevData);
+        const after = serializeLevelJson(nextData);
+        if (before === after) {
+          return prev;
+        }
+        const history = getHistory(row.fileName);
+        history.undo.push(prevData);
+        if (history.undo.length > 100) {
+          history.undo.shift();
+        }
+        history.redo = [];
         next[selectedIndex] = {
           ...row,
-          data: updater(cloneLevel(row.data)),
+          data: nextData,
           dirty: true,
         };
         return next;
       });
     },
-    [selectedIndex],
+    [getHistory, selectedIndex],
   );
+
+  const undoCurrent = useCallback(() => {
+    if (!current) {
+      setStatus("当前无可撤销内容。");
+      return;
+    }
+    const history = getHistory(current.fileName);
+    const previous = history.undo.pop();
+    if (!previous) {
+      setStatus("已到最早修改记录。");
+      return;
+    }
+    history.redo.push(cloneLevel(current.data));
+    setFiles((prev) => {
+      if (selectedIndex < 0 || selectedIndex >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      const row = next[selectedIndex];
+      next[selectedIndex] = {
+        ...row,
+        data: cloneLevel(previous),
+        dirty: true,
+      };
+      return next;
+    });
+    setStatus("已撤销一步（Ctrl/Cmd+Z）");
+  }, [current, getHistory, selectedIndex]);
+
+  const redoCurrent = useCallback(() => {
+    if (!current) {
+      setStatus("当前无可重做内容。");
+      return;
+    }
+    const history = getHistory(current.fileName);
+    const nextData = history.redo.pop();
+    if (!nextData) {
+      setStatus("没有可重做的修改。");
+      return;
+    }
+    history.undo.push(cloneLevel(current.data));
+    setFiles((prev) => {
+      if (selectedIndex < 0 || selectedIndex >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      const row = next[selectedIndex];
+      next[selectedIndex] = {
+        ...row,
+        data: cloneLevel(nextData),
+        dirty: true,
+      };
+      return next;
+    });
+    setStatus("已重做一步（Ctrl+Y / Ctrl/Cmd+Shift+Z）");
+  }, [current, getHistory, selectedIndex]);
 
   const pickDirectory = async () => {
     if (!hasFsAccess()) {
@@ -293,6 +381,14 @@ export default function App() {
         };
         return next;
       });
+      if (fileName !== prevName) {
+        const oldKey = historyKeyOf(prevName);
+        const newKey = historyKeyOf(fileName);
+        if (editHistoryRef.current[oldKey]) {
+          editHistoryRef.current[newKey] = editHistoryRef.current[oldKey];
+          delete editHistoryRef.current[oldKey];
+        }
+      }
       setStatus(`已保存 ${fileName}`);
       tryClearCachedLevel(fileName);
       if (fileName !== prevName) {
@@ -420,6 +516,40 @@ export default function App() {
     tryClearCachedLevel(current.fileName);
     setStatus("已清理当前关卡本地缓存（不影响磁盘文件）");
   };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing) {
+        return;
+      }
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if (key === "s") {
+        e.preventDefault();
+        void saveCurrent();
+        return;
+      }
+      if (key === "z" && e.shiftKey) {
+        e.preventDefault();
+        redoCurrent();
+        return;
+      }
+      if (key === "z") {
+        e.preventDefault();
+        undoCurrent();
+        return;
+      }
+      if (key === "y") {
+        e.preventDefault();
+        redoCurrent();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [redoCurrent, saveCurrent, undoCurrent]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -785,49 +915,49 @@ export default function App() {
           <div className="panel" style={{ overflow: "auto", fontSize: 13, lineHeight: 1.6 }}>
             <div style={{ fontWeight: 700, marginBottom: 6 }}>使用说明</div>
             <div>
-              <strong>1) 常规流程：</strong>先点「选择关卡目录」读取 `level_*.json`，编辑后点「保存当前」写回磁盘。
+              <strong>1) 常规流程：</strong>先点「选择关卡目录」读取关卡文件，编辑后点「保存当前」写回磁盘。
             </div>
             <div>
-              <strong>2) 浏览器兼容：</strong>Safari / Firefox 通常不支持目录读写 API；需目录写回时请使用 Chrome / Edge。
+              <strong>2) 浏览器兼容：</strong>部分浏览器不支持“直接读写文件夹”。需要把修改写回到工程目录时，请优先使用 Chrome 或 Edge。
             </div>
             <div>
-              <strong>3) 兼容模式：</strong>不支持目录写入时，用「导入 JSON」编辑后再「导出当前 JSON」手动覆盖工程文件。
+              <strong>3) 兼容模式：</strong>无法直接写回目录时，用「导入 JSON」编辑，再「导出当前 JSON」下载结果并手动覆盖工程文件。
             </div>
             <div>
-              <strong>4) 胜利条件逻辑：</strong>`WinConditionMode` 为 `ScoreOnly/ScoreAndObjectives/ScoreOrObjectives` 时，`TargetScore` 必须大于 0；为 `ObjectivesOnly` 时可不填分数。
+              <strong>4) 胜利条件逻辑：</strong>当胜利条件包含“分数目标”时，目标分必须大于 0；当胜利条件是“仅目标”时，目标分可不填。
             </div>
             <div>
-              <strong>5) Objectives 判定：</strong>当模式需要目标（`ObjectivesOnly/ScoreAndObjectives/ScoreOrObjectives`）时，`Objectives` 不能为空；`HandType` 必须合法，`Reward` 不能小于 0。
+              <strong>5) 目标判定：</strong>当胜利条件需要“目标”时，必须配置至少 1 条目标；目标的牌型必须合法；奖励分不能小于 0。
             </div>
             <div>
-              <strong>6) 牌池规则：</strong>`PoolSuits` 仅支持 `H/D/C/S`，`PoolRanks` 仅支持 `2~14`（14=Ace）。任一为空都无法通过校验。
+              <strong>6) 牌池规则：</strong>花色只能选 红心/方片/梅花/黑桃；点数范围只能是 2~14（14 表示 A）。任一为空都会校验失败。
             </div>
             <div>
-              <strong>7) 特殊牌与总牌数：</strong>`SpecialWild + SpecialMultiplier + SpecialSuit` 不能超过 `TotalCards`；特殊牌和道具初始次数都不能是负数。
+              <strong>7) 特殊牌与总牌数：</strong>特殊牌总数不能超过总牌数；特殊牌和道具初始次数都不能为负数。
             </div>
             <div>
-              <strong>8) BoardLayout 生效条件：</strong>`BoardLayout.length === TotalCards` 时显式布局完整生效；数量不一致会提示并可能回退到运行时自动布局。
+              <strong>8) 自定义布局生效条件：</strong>当“槽位数量 = 总牌数”时，自定义布局才会完整生效；数量不一致会提示，并可能回退为自动布局。
             </div>
             <div>
-              <strong>9) Layer 逻辑：</strong>先比较 `Layer`，数值越大越在上层；若 `Layer` 相同，数组下标更靠后的槽位视为更上层（后绘制/后压盖）。
+              <strong>9) 层级（叠放）逻辑：</strong>先比“层级”，数值越大越在上层；同层时，列表里更靠后的槽位会压在更上面（更容易遮挡下面的牌）。
             </div>
             <div>
-              <strong>10) 点击可用判定：</strong>系统按卡牌遮挡矩形计算“可见面积比例”；当可见比例 ≥ 70% 才可点。编辑器中卡牌底部百分比即该值预览。
+              <strong>10) 可点击判定：</strong>系统会计算每张牌被遮挡后的“可见面积比例”；可见比例 ≥ 70% 才可点。布局编辑器里卡牌底部的百分比就是这个预览值。
             </div>
             <div>
-              <strong>11) 坐标与吸附：</strong>拖拽时 `X/Y` 会按吸附步长对齐到网格（可调 `吸附X/吸附Y`）；`全部吸附` 会把全部槽位一次对齐。
+              <strong>11) 坐标与吸附：</strong>拖拽时会按“吸附 X / 吸附 Y”对齐到网格；「全部吸附」会把全部槽位一次对齐。
             </div>
             <div>
-              <strong>12) 默认矩阵与补齐：</strong>默认矩阵按每层 4x4（16 槽）生成；奇数层会加半格 X 偏移和轻微 Y 偏移形成叠放效果。`补齐到 TotalCards` 只补不足部分。
+              <strong>12) 默认矩阵与补齐：</strong>默认矩阵按每层 4×4（16 槽）生成；奇数层会做半格横向偏移与轻微纵向偏移，形成更自然的叠放。补齐只会增加缺少的槽位。
             </div>
             <div>
-              <strong>13) 排序与覆盖关系：</strong>「按层排序」会按 Layer =&gt; Y =&gt; X 重排数组。重排会改变“同层时谁在上面”的关系，请在完成布局后再排序确认。
+              <strong>13) 排序与覆盖关系：</strong>「按层排序」会重排槽位顺序（先层级，再纵向，再横向）。重排会改变“同层时谁在上面”的关系，请在完成布局后再排序确认。
             </div>
             <div>
-              <strong>14) 常见保存失败原因：</strong>未选择目录、浏览器权限被拒、目标文件重名、校验报错（右侧错误项）。可先修错误，再保存。
+              <strong>14) 常见保存失败原因：</strong>未选择目录、浏览器权限被拒、目标文件重名、校验报错（右侧错误项）。建议先修复错误，再保存。
             </div>
             <div>
-              <strong>15) 坐标建议：</strong>`X/Y` 绝对值过大（约超过 300）可能超出可视区域；同一 `Layer+X+Y` 重复会触发警告并导致重叠难点选。
+              <strong>15) 坐标建议：</strong>坐标离中心过远可能超出可视区域；同层同坐标重复会触发警告，也会导致重叠难点选。
             </div>
           </div>
         </aside>
