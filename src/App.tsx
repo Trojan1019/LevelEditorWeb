@@ -24,6 +24,7 @@ import { ValidationPanel } from "./ui/ValidationPanel";
 import { PoolStatsPanel } from "./ui/PoolStatsPanel";
 import { HandTypeUpperBoundsPanel } from "./ui/HandTypeUpperBoundsPanel";
 import { buildMultisetFromBoardLayout, buildPoolMultiset, computeHandTypeUpperBounds } from "./domain/poolStats";
+import { LevelPreviewPage } from "./ui/LevelPreviewPage";
 import {
   generateUniqueLevelSeed,
   randomizeBoardLayoutSlotRanks,
@@ -222,6 +223,7 @@ export default function App() {
   const seedMergeInputRef = useRef<HTMLInputElement>(null);
   const selectedIndexRef = useRef(0);
   const [seedDraft, setSeedDraft] = useState("");
+  const [previewLevel, setPreviewLevel] = useState<LevelConfigData | null>(null);
   const editHistoryRef = useRef<Record<string, EditHistory>>({});
 
   const historyKeyOf = useCallback((fileName: string) => fileName, []);
@@ -646,6 +648,10 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [redoCurrent, saveCurrent, undoCurrent]);
 
+  if (previewLevel) {
+    return <LevelPreviewPage level={previewLevel} onClose={() => setPreviewLevel(null)} />;
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <header
@@ -699,6 +705,9 @@ export default function App() {
         />
         <button type="button" onClick={exportCurrent} disabled={!current}>
           导出当前 JSON
+        </button>
+        <button type="button" onClick={() => current && setPreviewLevel(cloneLevel(current.data))} disabled={!current}>
+          关卡预览
         </button>
         <button type="button" onClick={clearCurrentCache} disabled={!current}>
           清理本地缓存
@@ -1101,7 +1110,14 @@ export default function App() {
               </div>
               <div className="panel" style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
                 <label className="field" style={{ margin: 0 }}>
-                  <span>万能牌数量（SpecialWild）</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <img
+                      src={`${(import.meta as any).env?.BASE_URL ?? "./"}sprites/cards/wild.png`}
+                      alt=""
+                      style={{ width: 18, height: 18, objectFit: "contain" }}
+                    />
+                    万能小丑数量（SpecialWild）
+                  </span>
                   <input
                     type="number"
                     value={current.data.SpecialWild}
@@ -1109,7 +1125,14 @@ export default function App() {
                   />
                 </label>
                 <label className="field" style={{ margin: 0 }}>
-                  <span>倍率牌数量（SpecialMultiplier）</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <img
+                      src={`${(import.meta as any).env?.BASE_URL ?? "./"}sprites/cards/multiplier.png`}
+                      alt=""
+                      style={{ width: 18, height: 18, objectFit: "contain" }}
+                    />
+                    倍率小丑数量（SpecialMultiplier）
+                  </span>
                   <input
                     type="number"
                     value={current.data.SpecialMultiplier}
@@ -1117,7 +1140,14 @@ export default function App() {
                   />
                 </label>
                 <label className="field" style={{ margin: 0 }}>
-                  <span>花色牌数量（SpecialSuit）</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <img
+                      src={`${(import.meta as any).env?.BASE_URL ?? "./"}sprites/cards/suit.png`}
+                      alt=""
+                      style={{ width: 18, height: 18, objectFit: "contain" }}
+                    />
+                    变化小丑数量（SpecialSuit）
+                  </span>
                   <input
                     type="number"
                     value={current.data.SpecialSuit}
@@ -1131,7 +1161,7 @@ export default function App() {
               </div>
               <div className="panel" style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
                 <label className="field" style={{ margin: 0 }}>
-                  <span>收纳道具次数（ItemStorage）</span>
+                  <span>收容道具次数（ItemStorage）</span>
                   <input
                     type="number"
                     value={current.data.ItemStorage}
@@ -1147,7 +1177,7 @@ export default function App() {
                   />
                 </label>
                 <label className="field" style={{ margin: 0 }}>
-                  <span>加万能牌道具次数（ItemAddWild）</span>
+                  <span>万能小丑道具次数（ItemAddWild）</span>
                   <input
                     type="number"
                     value={current.data.ItemAddWild}
