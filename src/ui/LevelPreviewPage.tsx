@@ -653,7 +653,9 @@ export function LevelPreviewPage({ level, onClose }: Props) {
     if (nextHand.length < 5) {
       setCards(nextCards);
       setHandIds(nextHand);
-      if (nextCards.filter((c) => !c.removed).length < 5) {
+      const remainOnBoard = nextCards.filter((c) => !c.removed).length;
+      const availableForNextSettlement = remainOnBoard + nextHand.length;
+      if (availableForNextSettlement < 5) {
         const needsObjectives =
           level.WinConditionMode === LevelWinConditionMode.ObjectivesOnly ||
           level.WinConditionMode === LevelWinConditionMode.ScoreAndObjectives ||
