@@ -498,7 +498,17 @@ VisibleRatio: ${(ratio * 100).toFixed(0)}%`}
                     style={{ pointerEvents: "none" }}
                   />
                 ) : null}
-                <text x={4} y={14} fill="#dbe5ff" fontSize={10} style={{ pointerEvents: "none" }}>
+                <text
+                  x={4}
+                  y={h - 18}
+                  fill="#ffe35c"
+                  stroke="#10131a"
+                  strokeWidth={2.5}
+                  paintOrder="stroke"
+                  fontSize={10}
+                  fontWeight={800}
+                  style={{ pointerEvents: "none" }}
+                >
                   #{i} L{s.Layer}
                 </text>
                 {!spriteHref ? (
