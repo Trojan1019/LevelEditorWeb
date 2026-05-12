@@ -10,6 +10,7 @@ import {
   type LevelFileSummary,
 } from "./domain/levelTypes";
 import {
+  isLevelDirty,
   loadLevelsFromDirectory,
   nextLevelIdFromFiles,
   persistLevel,
@@ -20,6 +21,37 @@ import { validateLevel } from "./validation/validateLevel";
 import { BoardEditor } from "./ui/BoardEditor";
 import { LevelList, type ListFilter } from "./ui/LevelList";
 import { ValidationPanel } from "./ui/ValidationPanel";
+import { PoolStatsPanel } from "./ui/PoolStatsPanel";
+import { HandTypeUpperBoundsPanel } from "./ui/HandTypeUpperBoundsPanel";
+import { buildMultisetFromBoardLayout, buildPoolMultiset, computeHandTypeUpperBounds } from "./domain/poolStats";
+import {
+  generateUniqueLevelSeed,
+  randomizeBoardLayoutSlotRanks,
+  randomizeBoardLayoutSlotSuits,
+  randomizeBoardLayoutSlotSuitsAndRanks,
+} from "./domain/levelPoolRandom";
+import { mergeLevelFromJsonFragment } from "./domain/mergeLevelFromPartial";
+
+function parseSeedUint32(text: string): number | null {
+  const t = text.trim().replace(/\s+/g, "");
+  if (t === "") {
+    return 0;
+  }
+  if (!/^\d+$/.test(t)) {
+    return null;
+  }
+  if (t.length > 10) {
+    return null;
+  }
+  const n = Number(t);
+  if (!Number.isFinite(n) || n < 0) {
+    return null;
+  }
+  if (n > 0xffffffff) {
+    return null;
+  }
+  return n >>> 0;
+}
 
 function hasFsAccess(): boolean {
   return typeof window !== "undefined" && "showDirectoryPicker" in window;
@@ -43,6 +75,12 @@ const HAND_TYPE_LABELS: Record<string, string> = {
   FourOfAKind: "四条",
   StraightFlush: "同花顺",
   RoyalFlush: "皇家同花顺",
+};
+
+const OBJECTIVE_REACH_LABEL: Record<"ok" | "risk" | "no", string> = {
+  ok: "可达",
+  risk: "边界",
+  no: "不可达",
 };
 
 function browserHintName(): string {
@@ -112,7 +150,7 @@ function tryClearCachedLevel(fileName: string): void {
 type SessionFile = {
   fileName: string;
   data: LevelConfigData;
-  dirty: boolean;
+  baselineJson: string;
 };
 
 type EditHistory = {
@@ -143,8 +181,13 @@ function tryLoadSessionFiles(): LoadedLevelFile[] {
       if (!normalized) {
         continue;
       }
+      const legacy = item as SessionFile & { dirty?: boolean };
+      const baselineJson =
+        typeof legacy.baselineJson === "string"
+          ? legacy.baselineJson
+          : serializeLevelJson(normalized);
       // Note: fileHandle cannot survive refresh; user must re-pick directory to save to disk.
-      out.push({ fileName, data: normalized, dirty: Boolean((item as SessionFile).dirty) });
+      out.push({ fileName, data: normalized, baselineJson });
     }
     return out;
   } catch {
@@ -157,7 +200,7 @@ function trySaveSessionFiles(files: LoadedLevelFile[]): void {
     const serializable: SessionFile[] = files.map((f) => ({
       fileName: f.fileName,
       data: f.data,
-      dirty: f.dirty,
+      baselineJson: f.baselineJson,
     }));
     localStorage.setItem(SESSION_FILES_KEY, JSON.stringify(serializable));
   } catch {
@@ -176,6 +219,9 @@ export default function App() {
   const [status, setStatus] = useState("");
   const [focusSlotIndex, setFocusSlotIndex] = useState<number | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const seedMergeInputRef = useRef<HTMLInputElement>(null);
+  const selectedIndexRef = useRef(0);
+  const [seedDraft, setSeedDraft] = useState("");
   const editHistoryRef = useRef<Record<string, EditHistory>>({});
 
   const historyKeyOf = useCallback((fileName: string) => fileName, []);
@@ -201,10 +247,57 @@ export default function App() {
   );
 
   const current = files[selectedIndex] ?? null;
+  selectedIndexRef.current = selectedIndex;
   const validation = useMemo(
     () => validateLevel(current?.data ?? null, summaries),
     [current, summaries],
   );
+
+  const reachabilitySource = useMemo(() => {
+    if (!current) {
+      return { multiset: null as ReturnType<typeof buildPoolMultiset> | null, sourceLabel: "无数据" };
+    }
+    const board = buildMultisetFromBoardLayout(current.data);
+    if (board.totalCards > 0) {
+      return { multiset: board, sourceLabel: "棋盘预览" };
+    }
+    const pool = buildPoolMultiset(current.data);
+    if (pool.totalCards > 0) {
+      return { multiset: pool, sourceLabel: "花色池配置" };
+    }
+    return { multiset: null as ReturnType<typeof buildPoolMultiset> | null, sourceLabel: "无数据" };
+  }, [current]);
+
+  const objectiveReachState = useMemo(() => {
+    const out: Array<{ status: "ok" | "risk" | "no"; upper: number | null }> = [];
+    if (!current) {
+      return out;
+    }
+    const upper = reachabilitySource.multiset ? computeHandTypeUpperBounds(reachabilitySource.multiset) : null;
+    for (const obj of current.data.Objectives) {
+      if (!obj || !upper || !(obj.HandType in upper) || obj.Count <= 0) {
+        out.push({ status: "risk", upper: null });
+        continue;
+      }
+      const cap = upper[obj.HandType as keyof typeof upper];
+      if (cap > obj.Count) {
+        out.push({ status: "ok", upper: cap });
+      } else if (cap === obj.Count) {
+        out.push({ status: "risk", upper: cap });
+      } else {
+        out.push({ status: "no", upper: cap });
+      }
+    }
+    return out;
+  }, [current, reachabilitySource.multiset]);
+
+  useEffect(() => {
+    if (current) {
+      setSeedDraft(String(current.data.Seed >>> 0));
+    } else {
+      setSeedDraft("");
+    }
+  }, [current, current?.data.Seed, selectedIndex]);
 
   // Restore last session list on refresh (works even without directory permission).
   useEffect(() => {
@@ -222,7 +315,7 @@ export default function App() {
   useEffect(() => {
     trySaveSessionFiles(files);
     for (const f of files) {
-      if (!f.dirty) {
+      if (!isLevelDirty(f)) {
         continue;
       }
       trySaveCachedLevel(f.fileName, f.data);
@@ -253,7 +346,6 @@ export default function App() {
         next[selectedIndex] = {
           ...row,
           data: nextData,
-          dirty: true,
         };
         return next;
       });
@@ -282,7 +374,6 @@ export default function App() {
       next[selectedIndex] = {
         ...row,
         data: cloneLevel(previous),
-        dirty: true,
       };
       return next;
     });
@@ -310,7 +401,6 @@ export default function App() {
       next[selectedIndex] = {
         ...row,
         data: cloneLevel(nextData),
-        dirty: true,
       };
       return next;
     });
@@ -328,11 +418,16 @@ export default function App() {
       setDirHandle(handle);
       const loadedRaw = await loadLevelsFromDirectory(handle);
       const loaded = loadedRaw.map((f) => {
+        const diskJson = f.baselineJson;
         const cached = tryLoadCachedLevel(f.fileName);
         if (!cached) {
           return f;
         }
-        return { ...f, data: cached, dirty: true };
+        return {
+          ...f,
+          data: cached,
+          baselineJson: diskJson,
+        };
       });
       setFiles(loaded);
       setSelectedIndex(loaded.length > 0 ? 0 : 0);
@@ -377,7 +472,7 @@ export default function App() {
           ...row,
           fileName,
           fileHandle,
-          dirty: false,
+          baselineJson: serializeLevelJson(row.data),
         };
         return next;
       });
@@ -405,7 +500,7 @@ export default function App() {
     const row: LoadedLevelFile = {
       fileName: levelFileNameForId(id),
       data,
-      dirty: true,
+      baselineJson: serializeLevelJson(data),
     };
     setFiles((p) => [...p, row]);
     setSelectedIndex(files.length);
@@ -422,7 +517,7 @@ export default function App() {
     const row: LoadedLevelFile = {
       fileName: levelFileNameForId(id),
       data,
-      dirty: true,
+      baselineJson: serializeLevelJson(data),
     };
     setFiles((p) => [...p, row]);
     setSelectedIndex(files.length);
@@ -464,7 +559,7 @@ export default function App() {
       return;
     }
     const cur = files[selectedIndex];
-    if (cur?.dirty && index !== selectedIndex) {
+    if (cur && isLevelDirty(cur) && index !== selectedIndex) {
       if (!window.confirm("当前关卡有未保存修改，确定切换？")) {
         return;
       }
@@ -488,7 +583,7 @@ export default function App() {
         added.push({
           fileName: levelFileNameForId(data.Id),
           data,
-          dirty: false,
+          baselineJson: serializeLevelJson(data),
         });
       } catch {
         /* skip */
@@ -567,9 +662,21 @@ export default function App() {
         <button type="button" className="primary" onClick={pickDirectory}>
           选择关卡目录
         </button>
-        <button type="button" onClick={saveCurrent} disabled={!current}>
-          保存当前
+        <button
+          type="button"
+          className={current && isLevelDirty(current) ? "primary" : undefined}
+          onClick={saveCurrent}
+          disabled={!current}
+          title={current && isLevelDirty(current) ? "将当前关卡写入已选目录" : undefined}
+        >
+          {current && isLevelDirty(current) ? "保存到磁盘" : "保存当前"}
         </button>
+        {current && isLevelDirty(current) ? (
+          <span style={{ color: "var(--warn)", fontSize: 12 }}>未保存</span>
+        ) : null}
+        {current && !current.fileHandle ? (
+          <span style={{ color: "var(--muted)", fontSize: 12 }}>仅内存（未关联磁盘文件）</span>
+        ) : null}
         <button type="button" onClick={newLevel}>
           新建
         </button>
@@ -698,9 +805,218 @@ export default function App() {
                     <option value="false">否：允许重复固定同一张牌</option>
                   </select>
                 </label>
+                <div
+                  style={{
+                    gridColumn: "1 / -1",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    marginBottom: 0,
+                  }}
+                >
+                  <span style={{ fontWeight: 500 }}>随机种子（Seed）</span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "stretch", width: "100%" }}>
+                    <input
+                      type="text"
+                      className="seed-text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder="0～4294967295"
+                      value={seedDraft}
+                      onChange={(e) => setSeedDraft(e.target.value)}
+                      title="纯数字、无上下键；改完后点「应用种子」写入关卡。也可「从 JSON 合并」导入片段。"
+                      style={{ minHeight: 36 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!current) {
+                          return;
+                        }
+                        const parsed = parseSeedUint32(seedDraft);
+                        if (parsed === null) {
+                          setStatus("种子格式无效：请输入非负整数（不超过 4294967295）。");
+                          return;
+                        }
+                        updateData((d) => ({ ...d, Seed: parsed }));
+                        setSeedDraft(String(parsed));
+                        setStatus(`已应用种子：${parsed}`);
+                      }}
+                    >
+                      应用种子
+                    </button>
+                    <button type="button" onClick={() => seedMergeInputRef.current?.click()}>
+                      从 JSON 合并
+                    </button>
+                    <input
+                      ref={seedMergeInputRef}
+                      type="file"
+                      accept=".json,application/json"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!file) {
+                          return;
+                        }
+                        const mergeTargetIndex = selectedIndex;
+                        const row = files[mergeTargetIndex];
+                        if (!row) {
+                          setStatus("没有选中的关卡，无法合并。");
+                          return;
+                        }
+                        const baseData = cloneLevel(row.data);
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          try {
+                            const text = String(reader.result ?? "");
+                            const raw = JSON.parse(text) as unknown;
+                            const res = mergeLevelFromJsonFragment(baseData, raw);
+                            if (!res.ok) {
+                              setStatus(res.message);
+                              return;
+                            }
+                            if (mergeTargetIndex === selectedIndexRef.current) {
+                              updateData(() => res.data);
+                            } else {
+                              setFiles((prev) => {
+                                if (mergeTargetIndex < 0 || mergeTargetIndex >= prev.length) {
+                                  return prev;
+                                }
+                                const next = [...prev];
+                                const r = next[mergeTargetIndex];
+                                next[mergeTargetIndex] = { ...r, data: res.data };
+                                return next;
+                              });
+                            }
+                            if (mergeTargetIndex === selectedIndexRef.current) {
+                              setSeedDraft(String(res.data.Seed >>> 0));
+                            }
+                            setStatus(`已从 JSON 合并 ${file.name} 中的字段到关卡「${row.fileName}」。`);
+                          } catch (err) {
+                            setStatus(`读取 JSON 失败：${(err as Error).message}`);
+                          }
+                        };
+                        reader.onerror = () => setStatus("读取文件失败。");
+                        reader.readAsText(file, "UTF-8");
+                      }}
+                    />
+                  </div>
+                  <span style={{ color: "var(--muted)", fontSize: 11 }}>
+                    「从 JSON 合并」会按文件中出现的字段覆盖当前关卡（如 Seed、牌池、棋盘等），未出现的字段保持不变。
+                  </span>
+                </div>
               </div>
               <div className="panel">
                 <div style={{ marginBottom: 8, fontWeight: 600 }}>花色池（PoolSuits）</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!current) {
+                        return;
+                      }
+                      const layout = current.data.BoardLayout;
+                      if (!layout.length) {
+                        setStatus("请先在棋盘区域添加槽位，再随机各槽位牌的花色。");
+                        return;
+                      }
+                      if (!current.data.PoolSuits.length) {
+                        setStatus("花色池为空，无法随机槽位花色。");
+                        return;
+                      }
+                      const seed = generateUniqueLevelSeed();
+                      const res = randomizeBoardLayoutSlotSuits(seed, current.data.BoardLayout, current.data.PoolSuits);
+                      if (!res.ok) {
+                        setStatus(res.message);
+                        return;
+                      }
+                      updateData((d) => ({
+                        ...d,
+                        Seed: seed,
+                        BoardLayout: res.layout,
+                      }));
+                      setStatus("已按花色池为各槽位随机花色（每张实体牌不重复，未改池子）。");
+                    }}
+                  >
+                    随机槽位花色
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!current) {
+                        return;
+                      }
+                      const layout = current.data.BoardLayout;
+                      if (!layout.length) {
+                        setStatus("请先在棋盘区域添加槽位，再随机各槽位牌的花色与点数。");
+                        return;
+                      }
+                      if (!current.data.PoolSuits.length) {
+                        setStatus("花色池为空，无法随机槽位花色。");
+                        return;
+                      }
+                      if (!current.data.PoolRanks.length) {
+                        setStatus("点数池为空，无法随机槽位点数。");
+                        return;
+                      }
+                      const seed = generateUniqueLevelSeed();
+                      const res = randomizeBoardLayoutSlotSuitsAndRanks(
+                        seed,
+                        current.data.BoardLayout,
+                        current.data.PoolSuits,
+                        current.data.PoolRanks,
+                      );
+                      if (!res.ok) {
+                        setStatus(res.message);
+                        return;
+                      }
+                      updateData((d) => ({
+                        ...d,
+                        Seed: seed,
+                        BoardLayout: res.layout,
+                      }));
+                      setStatus("已从花色池×点数池无放回发牌到各槽位（每张实体牌不重复）。");
+                    }}
+                  >
+                    随机槽位花色与点数
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!current) {
+                        return;
+                      }
+                      const layout = current.data.BoardLayout;
+                      if (!layout.length) {
+                        setStatus("请先在棋盘区域添加槽位，再随机各槽位牌的点数。");
+                        return;
+                      }
+                      if (!current.data.PoolRanks.length) {
+                        setStatus("点数池为空，无法随机槽位点数。");
+                        return;
+                      }
+                      const seed = generateUniqueLevelSeed();
+                      const res = randomizeBoardLayoutSlotRanks(seed, current.data.BoardLayout, current.data.PoolRanks);
+                      if (!res.ok) {
+                        setStatus(res.message);
+                        return;
+                      }
+                      updateData((d) => ({
+                        ...d,
+                        Seed: seed,
+                        BoardLayout: res.layout,
+                      }));
+                      setStatus("已按点数池为各槽位随机点数（每张实体牌不重复，未改池子）。");
+                    }}
+                  >
+                    随机槽位点数
+                  </button>
+                  <span style={{ color: "var(--muted)", fontSize: 12 }}>
+                    从花色池×点数池构成的牌堆无放回发牌；同一张实体牌（花色+点数）不会在棋盘上出现两次
+                  </span>
+                </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {SUIT_CODES.map((s) => {
                     const on = current.data.PoolSuits.includes(s);
@@ -773,6 +1089,14 @@ export default function App() {
                   <button type="button" onClick={() => updateData((d) => ({ ...d, PoolRanks: [8, 9, 10, 11, 12, 13, 14] }))}>
                     高点数
                   </button>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 10, alignItems: "stretch", flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 560px", minWidth: 420 }}>
+                  <PoolStatsPanel level={current.data} />
+                </div>
+                <div style={{ flex: "0 0 280px", minWidth: 260 }}>
+                  <HandTypeUpperBoundsPanel multiset={reachabilitySource.multiset} sourceLabel={reachabilitySource.sourceLabel} />
                 </div>
               </div>
               <div className="panel" style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
@@ -895,6 +1219,34 @@ export default function App() {
                         }
                       />
                     </label>
+                    <div
+                      style={{
+                        minWidth: 160,
+                        alignSelf: "stretch",
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "0 8px",
+                        border: "1px solid var(--border)",
+                        borderRadius: 6,
+                        background:
+                          objectiveReachState[idx]?.status === "ok"
+                            ? "rgba(91, 211, 139, 0.12)"
+                            : objectiveReachState[idx]?.status === "no"
+                              ? "rgba(255, 107, 107, 0.12)"
+                              : "rgba(255, 200, 87, 0.12)",
+                        color:
+                          objectiveReachState[idx]?.status === "ok"
+                            ? "var(--ok)"
+                            : objectiveReachState[idx]?.status === "no"
+                              ? "var(--error)"
+                              : "var(--warn)",
+                        fontSize: 12,
+                      }}
+                      title={`统计来源：${reachabilitySource.sourceLabel}`}
+                    >
+                      可达性：{OBJECTIVE_REACH_LABEL[objectiveReachState[idx]?.status ?? "risk"]}
+                      {typeof objectiveReachState[idx]?.upper === "number" ? `（上界 ${objectiveReachState[idx]!.upper}）` : ""}
+                    </div>
                     <button
                       type="button"
                       onClick={() =>
@@ -969,6 +1321,9 @@ export default function App() {
             </div>
             <div>
               <strong>15) 坐标建议：</strong>坐标离中心过远可能超出可视区域；同层同坐标重复会触发警告，也会导致重叠难点选。
+            </div>
+            <div>
+              <strong>16) 随机种子：</strong>三个「随机槽位…」按钮会换新种子，并在花色池×点数池构成的实体牌范围内<strong>无放回</strong>为槽位分配牌面，保证同一关卡里不会出现两张完全相同的实体牌（与「只有一副牌」校验一致）。槽位数不能超过池子能组成的张数（全池最多 52）；若无法满足不重复约束，会提示原因且不更新种子。
             </div>
           </div>
         </aside>

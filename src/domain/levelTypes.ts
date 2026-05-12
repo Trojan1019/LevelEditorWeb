@@ -26,6 +26,8 @@ export interface LevelConfigData {
   TargetScore: number;
   WinConditionMode: LevelWinConditionMode;
   IsSingleDeck: boolean;
+  /** Deterministic pool randomization; 0 = never set by random buttons */
+  Seed: number;
   PoolSuits: SuitCode[] | string[];
   PoolRanks: number[];
   SpecialWild: number;
@@ -72,6 +74,7 @@ export function normalizeLevelConfig(raw: unknown): LevelConfigData | null {
     TargetScore: coerceInt(o.TargetScore, 0),
     WinConditionMode: coerceInt(o.WinConditionMode, 0) as LevelConfigData["WinConditionMode"],
     IsSingleDeck: coerceBool(o.IsSingleDeck, true),
+    Seed: coerceInt(o.Seed, 0),
     PoolSuits: Array.isArray(o.PoolSuits) ? (o.PoolSuits as string[]) : [],
     PoolRanks: Array.isArray(o.PoolRanks) ? (o.PoolRanks as number[]).map((n) => coerceInt(n, 0)) : [],
     SpecialWild: coerceInt(o.SpecialWild, 0),

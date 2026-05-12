@@ -1,0 +1,188 @@
+{
+    "Id": 8,
+    "TitleKey": "",
+    "DescriptionKey": "",
+    "TotalCards": 29,
+    "TargetScore": 2000,
+    "WinConditionMode": 0,
+    "PoolSuits": [
+        "H",
+        "S",
+        "D",
+        "C"
+    ],
+    "PoolRanks": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+    ],
+    "SpecialWild": 1,
+    "SpecialMultiplier": 0,
+    "SpecialSuit": 1,
+    "ItemStorage": 1,
+    "ItemShuffle": 0,
+    "ItemAddWild": 0,
+    "BoardLayout": [
+        {
+            "X": -60,
+            "Y": -80,
+            "Layer": 0
+        },
+        {
+            "X": -20,
+            "Y": -80,
+            "Layer": 0
+        },
+        {
+            "X": 20,
+            "Y": -80,
+            "Layer": 0
+        },
+        {
+            "X": 60,
+            "Y": -80,
+            "Layer": 0
+        },
+        {
+            "X": -60,
+            "Y": -40,
+            "Layer": 0
+        },
+        {
+            "X": -20,
+            "Y": -40,
+            "Layer": 0
+        },
+        {
+            "X": 20,
+            "Y": -40,
+            "Layer": 0
+        },
+        {
+            "X": 60,
+            "Y": -40,
+            "Layer": 0
+        },
+        {
+            "X": -60,
+            "Y": 0,
+            "Layer": 0
+        },
+        {
+            "X": -20,
+            "Y": 0,
+            "Layer": 0
+        },
+        {
+            "X": 20,
+            "Y": 0,
+            "Layer": 0
+        },
+        {
+            "X": 60,
+            "Y": 0,
+            "Layer": 0
+        },
+        {
+            "X": -40,
+            "Y": -100,
+            "Layer": 1
+        },
+        {
+            "X": 0,
+            "Y": -100,
+            "Layer": 1
+        },
+        {
+            "X": 40,
+            "Y": -100,
+            "Layer": 1
+        },
+        {
+            "X": -40,
+            "Y": -60,
+            "Layer": 1
+        },
+        {
+            "X": 0,
+            "Y": -60,
+            "Layer": 1
+        },
+        {
+            "X": 40,
+            "Y": -60,
+            "Layer": 1
+        },
+        {
+            "X": -40,
+            "Y": -20,
+            "Layer": 1
+        },
+        {
+            "X": 0,
+            "Y": -20,
+            "Layer": 1
+        },
+        {
+            "X": 40,
+            "Y": -20,
+            "Layer": 1
+        },
+        {
+            "X": -40,
+            "Y": 20,
+            "Layer": 1
+        },
+        {
+            "X": 0,
+            "Y": 20,
+            "Layer": 1
+        },
+        {
+            "X": 40,
+            "Y": 20,
+            "Layer": 1
+        },
+        {
+            "X": -60,
+            "Y": -80,
+            "Layer": 2
+        },
+        {
+            "X": -20,
+            "Y": -80,
+            "Layer": 2
+        },
+        {
+            "X": 20,
+            "Y": -80,
+            "Layer": 2
+        },
+        {
+            "X": 60,
+            "Y": -80,
+            "Layer": 2
+        },
+        {
+            "X": 0,
+            "Y": -40,
+            "Layer": 2
+        }
+    ],
+    "Objectives": [
+        {
+            "HandType": "FourOfAKind",
+            "Count": 1,
+            "Reward": 400
+        }
+    ]
+}

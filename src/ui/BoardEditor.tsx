@@ -53,7 +53,13 @@ function saveSnap(key: string, value: number): void {
 
 function layoutBounds(slots: LevelBoardSlotData[]): { minX: number; maxX: number; minY: number; maxY: number } {
   if (slots.length === 0) {
-    return { minX: -80, maxX: 80, minY: -80, maxY: 80 };
+    const pad = 80;
+    return {
+      minX: -80,
+      maxX: 80,
+      minY: SNAP_ORIGIN_Y - pad,
+      maxY: SNAP_ORIGIN_Y + pad,
+    };
   }
   let minX = Infinity;
   let maxX = -Infinity;
@@ -140,6 +146,9 @@ export function BoardEditor({
 }: Props) {
   const [selected, setSelected] = useState<number>(-1);
   const [pickerIndex, setPickerIndex] = useState<number>(-1);
+  const [visibleLayers, setVisibleLayers] = useState<number[] | null>(null);
+  const [layerDropdownOpen, setLayerDropdownOpen] = useState(false);
+  const layerDropdownRef = useRef<HTMLDivElement | null>(null);
   const [snapX, setSnapX] = useState(() => loadSnap(SNAP_X_STORAGE_KEY, DEFAULT_SNAP_STEP_X));
   const [snapY, setSnapY] = useState(() => loadSnap(SNAP_Y_STORAGE_KEY, DEFAULT_SNAP_STEP_Y));
   const dragRef = useRef<{
@@ -166,6 +175,68 @@ export function BoardEditor({
     }
     return computeVisibleRatios(boardLayout);
   }, [boardLayout, totalCards]);
+
+  const layerOptions = useMemo(() => {
+    const set = new Set<number>();
+    for (const s of boardLayout) {
+      set.add(s.Layer);
+    }
+    return Array.from(set).sort((a, b) => a - b);
+  }, [boardLayout]);
+
+  const visibleLayerSet = useMemo(() => (visibleLayers ? new Set(visibleLayers) : null), [visibleLayers]);
+
+  const displayedIndices = useMemo(() => {
+    if (!visibleLayerSet) {
+      return boardLayout.map((_, i) => i);
+    }
+    const out: number[] = [];
+    for (let i = 0; i < boardLayout.length; i++) {
+      if (visibleLayerSet.has(boardLayout[i].Layer)) {
+        out.push(i);
+      }
+    }
+    return out;
+  }, [boardLayout, visibleLayerSet]);
+
+  const layerSummaryText = useMemo(() => {
+    if (!layerOptions.length) {
+      return "已选择全部层";
+    }
+    if (!visibleLayers || visibleLayers.length === layerOptions.length) {
+      return "已选择全部层";
+    }
+    return `已选择${visibleLayers.join("/")}层`;
+  }, [layerOptions, visibleLayers]);
+
+  const toggleLayerVisible = useCallback(
+    (layer: number) => {
+      setVisibleLayers((prev) => {
+        const all = layerOptions;
+        const base = prev ?? [...all];
+        const has = base.includes(layer);
+        const next = has ? base.filter((x) => x !== layer) : [...base, layer].sort((a, b) => a - b);
+        if (next.length === 0 || next.length === all.length) {
+          return null;
+        }
+        return next;
+      });
+    },
+    [layerOptions],
+  );
+
+  useEffect(() => {
+    if (!layerDropdownOpen) {
+      return;
+    }
+    const onPointerDown = (e: MouseEvent) => {
+      if (!layerDropdownRef.current?.contains(e.target as Node)) {
+        setLayerDropdownOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onPointerDown);
+    return () => window.removeEventListener("mousedown", onPointerDown);
+  }, [layerDropdownOpen]);
 
   const hasFixedBoardCards = useMemo(
     () => boardLayout.some((slot) => slot.Suit !== "N" && slot.Rank >= RANK_MIN && slot.Rank <= RANK_MAX),
@@ -287,6 +358,56 @@ export function BoardEditor({
         >
           恢复默认吸附
         </button>
+        <div ref={layerDropdownRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: 6 }}>
+          <span>层级筛选</span>
+          <button type="button" onClick={() => setLayerDropdownOpen((v) => !v)} aria-expanded={layerDropdownOpen} title="点击展开层级筛选">
+            {layerSummaryText} {layerDropdownOpen ? "▴" : "▾"}
+          </button>
+          {layerDropdownOpen ? (
+            <div
+              style={{
+                position: "absolute",
+                top: "calc(100% + 6px)",
+                left: 68,
+                minWidth: 170,
+                maxHeight: 220,
+                overflow: "auto",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                background: "var(--panel)",
+                padding: 6,
+                zIndex: 20,
+                boxShadow: "0 10px 24px rgba(0,0,0,0.35)",
+              }}
+            >
+              {layerOptions.map((layer) => (
+                <button
+                  key={layer}
+                  type="button"
+                  onClick={() => toggleLayerVisible(layer)}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 4,
+                    background: visibleLayerSet?.has(layer) || (!visibleLayerSet && layerOptions.length > 0) ? "#243049" : undefined,
+                  }}
+                >
+                  <span>层 {layer}</span>
+                  <span>{visibleLayerSet?.has(layer) || (!visibleLayerSet && layerOptions.length > 0) ? "✓" : ""}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <button type="button" onClick={() => setVisibleLayers(null)}>
+          显示全部层
+        </button>
+        <span style={{ color: "var(--muted)", fontSize: 12 }}>
+          {visibleLayers ? `当前显示层：${visibleLayers.join(", ")}` : "当前显示层：全部"}
+        </span>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         <button
@@ -490,9 +611,19 @@ export function BoardEditor({
             y1={SNAP_ORIGIN_Y}
             x2={vb.x + vb.w}
             y2={SNAP_ORIGIN_Y}
-            stroke="#2a3344"
-            strokeWidth={1}
+            stroke="var(--accent)"
+            strokeWidth={1.5}
+            strokeDasharray="6 4"
           />
+          <text
+            x={vb.x + 6}
+            y={SNAP_ORIGIN_Y - 4}
+            fill="var(--muted)"
+            fontSize={10}
+            style={{ pointerEvents: "none" }}
+          >
+            Y 基准 ({SNAP_ORIGIN_Y})
+          </text>
           <line
             x1={SNAP_ORIGIN_X}
             y1={vb.y}
@@ -501,7 +632,8 @@ export function BoardEditor({
             stroke="#2a3344"
             strokeWidth={1}
           />
-          {boardLayout.map((s, i) => {
+          {displayedIndices.map((i) => {
+            const s = boardLayout[i];
             const w = SOURCE_CARD_WIDTH;
             const h = SOURCE_CARD_HEIGHT;
             const rx = s.X - w / 2;
@@ -659,6 +791,7 @@ VisibleRatio: ${(ratio * 100).toFixed(0)}%`}
       ) : null}
       <div style={{ color: "var(--muted)", fontSize: 11 }}>
         单击或拖拽移动槽位；双击槽位选择固定牌面，N/0 表示不固定。遮挡可点预览需 BoardLayout 槽位数等于 TotalCards。可点阈值与运行时一致（可见比例 ≥ 70%）。
+        坐标与数据一致：预览为浏览器 SVG 惯例，<strong>Y 轴向下为正</strong>（数值越大越靠画面下方）；青色虚线为数据 Y = {SNAP_ORIGIN_Y} 的基准行。若运行时世界坐标 Y 向上，请在客户端对 BoardLayout.Y 做符号换算。
       </div>
     </div>
   );

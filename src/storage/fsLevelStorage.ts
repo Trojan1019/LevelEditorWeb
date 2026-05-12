@@ -6,13 +6,18 @@ export interface LoadedLevelFile {
   /** Undefined until first save for newly created in-memory levels */
   fileHandle?: FileSystemFileHandle;
   data: LevelConfigData;
-  dirty: boolean;
+  /** 上次「已对齐磁盘/导入」的 JSON，用于判断是否与当前编辑内容一致 */
+  baselineJson: string;
 }
 
 const LEVEL_GLOB = /^level_\d+\.json$/i;
 
 export function serializeLevelJson(data: LevelConfigData): string {
   return JSON.stringify(data, null, 2);
+}
+
+export function isLevelDirty(row: LoadedLevelFile): boolean {
+  return serializeLevelJson(row.data) !== row.baselineJson;
 }
 
 export async function readTextFile(handle: FileSystemFileHandle): Promise<string> {
@@ -48,7 +53,7 @@ export async function loadLevelsFromDirectory(dir: FileSystemDirectoryHandle): P
     if (!data) {
       continue;
     }
-    out.push({ fileName: name, fileHandle: fh, data, dirty: false });
+    out.push({ fileName: name, fileHandle: fh, data, baselineJson: serializeLevelJson(data) });
   }
   out.sort((a, b) => parseLevelIdFromFileName(a.fileName) - parseLevelIdFromFileName(b.fileName));
   return out;

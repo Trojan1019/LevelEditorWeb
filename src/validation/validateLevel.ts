@@ -1,4 +1,5 @@
 import { BOARD_SUIT_CODES, LevelWinConditionMode, RANK_MAX, RANK_MIN, SUIT_CODES, isValidHandType } from "../domain/enums";
+import { buildMultisetFromBoardLayout, buildPoolMultiset, objectiveReachabilityMessages } from "../domain/poolStats";
 import type { LevelConfigData, LevelFileSummary } from "../domain/levelTypes";
 
 export type ValidationSeverity = "error" | "warning" | "info";
@@ -184,6 +185,21 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
           severity: "error",
           message: `Objectives[${i}] 的 Reward 不能为负数。`,
         });
+      }
+    }
+
+    const boardMultiset = buildMultisetFromBoardLayout(level);
+    const poolOkForStats =
+      level.PoolSuits.length > 0 &&
+      level.PoolRanks.length > 0 &&
+      level.PoolSuits.every((code) => code && String(code).trim() !== "" && validSuitCodes.has(String(code))) &&
+      level.PoolRanks.every((rank) => rank >= RANK_MIN && rank <= RANK_MAX);
+    const multiset =
+      boardMultiset.totalCards > 0 ? boardMultiset : poolOkForStats ? buildPoolMultiset(level) : null;
+    if (multiset && multiset.totalCards > 0) {
+      const sourceLabel = boardMultiset.totalCards > 0 ? "棋盘预览" : "花色池配置";
+      for (const msg of objectiveReachabilityMessages(level, multiset, sourceLabel)) {
+        messages.push(msg);
       }
     }
   }

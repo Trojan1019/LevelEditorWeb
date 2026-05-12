@@ -11,6 +11,7 @@ export function createDefaultLevel(levelId: number): LevelConfigData {
     TargetScore: 300,
     WinConditionMode: LevelWinConditionMode.ScoreOnly,
     IsSingleDeck: true,
+    Seed: 0,
     PoolSuits: ["H"],
     PoolRanks: [2, 3, 4, 5, 6, 7, 8],
     SpecialWild: 0,
