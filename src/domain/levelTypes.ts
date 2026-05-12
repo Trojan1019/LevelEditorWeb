@@ -39,17 +39,7 @@ export interface LevelConfigData {
   DescriptionKey: string;
   TotalCards: number;
   TargetScore: number;
-  /** Designer hint: recommended score target (not enforced by gameplay) */
-  TargetScoreRecommended: number;
-  /** Designer hint: soft lower bound for TargetScore */
-  TargetScoreMin: number;
-  /** Designer hint: soft upper bound for TargetScore */
-  TargetScoreMax: number;
-  /** If false: score win requires totalScore === TargetScore (no overscore win) */
-  AllowOverScoreWin: boolean;
   WinConditionMode: LevelWinConditionMode;
-  /** If true: block saving when obvious unreachable */
-  StrictBlockOnUnreachable: boolean;
   IsSingleDeck: boolean;
   /** Deterministic pool randomization; 0 = never set by random buttons */
   Seed: number;
@@ -98,12 +88,7 @@ export function normalizeLevelConfig(raw: unknown): LevelConfigData | null {
     DescriptionKey: typeof o.DescriptionKey === "string" ? o.DescriptionKey : "",
     TotalCards: coerceInt(o.TotalCards, 0),
     TargetScore: coerceInt(o.TargetScore, 0),
-    TargetScoreRecommended: coerceInt(o.TargetScoreRecommended, 0),
-    TargetScoreMin: coerceInt(o.TargetScoreMin, 0),
-    TargetScoreMax: coerceInt(o.TargetScoreMax, 0),
-    AllowOverScoreWin: coerceBool(o.AllowOverScoreWin, true),
     WinConditionMode: coerceInt(o.WinConditionMode, 0) as LevelConfigData["WinConditionMode"],
-    StrictBlockOnUnreachable: coerceBool(o.StrictBlockOnUnreachable, true),
     IsSingleDeck: coerceBool(o.IsSingleDeck, true),
     Seed: coerceInt(o.Seed, 0),
     PoolSuits: Array.isArray(o.PoolSuits) ? (o.PoolSuits as string[]) : [],

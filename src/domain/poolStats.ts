@@ -263,7 +263,7 @@ export function objectiveReachabilityMessages(
     level.WinConditionMode === LevelWinConditionMode.ObjectivesOnly ||
     level.WinConditionMode === LevelWinConditionMode.ScoreAndObjectives ||
     level.WinConditionMode === LevelWinConditionMode.ScoreOrObjectives;
-  const strict = !!level.StrictBlockOnUnreachable;
+  const strict = true;
 
   for (let i = 0; i < (level.Objectives ?? []).length; i++) {
     const o = level.Objectives[i];

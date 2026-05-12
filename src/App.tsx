@@ -250,6 +250,70 @@ export default function App() {
 
   const current = files[selectedIndex] ?? null;
   selectedIndexRef.current = selectedIndex;
+  const scoreReference = useMemo(() => {
+    if (!current) {
+      return { min: 0, max: 0, recommended: 0 };
+    }
+    const rounds = Math.floor(Math.max(0, current.data.TotalCards) / 5);
+    if (rounds <= 0) {
+      return { min: 0, max: 0, recommended: 0 };
+    }
+    const mBoard = buildMultisetFromBoardLayout(current.data);
+    const m = mBoard.totalCards > 0 ? mBoard : buildPoolMultiset(current.data);
+    const upper = computeHandTypeUpperBounds(m);
+    const rankEntries = [...m.rankCounts.entries()];
+    const totalRankCards = rankEntries.reduce((s, [, c]) => s + c, 0);
+    const avgRank = totalRankCards > 0 ? rankEntries.reduce((s, [r, c]) => s + r * c, 0) / totalRankCards : 8;
+    const minRank = rankEntries.length ? Math.min(...rankEntries.map(([r]) => r)) : 2;
+    const maxRank = rankEntries.length ? Math.max(...rankEntries.map(([r]) => r)) : 14;
+
+    const handMul: Record<string, number> = {
+      HighCard: 1,
+      Pair: 2,
+      TwoPair: 2,
+      ThreeOfAKind: 3,
+      Straight: 4,
+      Flush: 5,
+      FullHouse: 6,
+      FourOfAKind: 7,
+      StraightFlush: 8,
+      RoyalFlush: 9,
+    };
+    const handQualityWeights: Record<string, number> = {
+      Pair: 0.15,
+      TwoPair: 0.22,
+      ThreeOfAKind: 0.35,
+      Straight: 0.45,
+      Flush: 0.55,
+      FullHouse: 0.7,
+      FourOfAKind: 0.85,
+      StraightFlush: 1.0,
+      RoyalFlush: 1.1,
+      HighCard: 0.05,
+    };
+    const qualityRaw = Object.keys(handQualityWeights).reduce((s, key) => {
+      const cap = Math.min(rounds, upper[key as keyof typeof upper] ?? 0);
+      return s + cap * handQualityWeights[key];
+    }, 0);
+    const quality = Math.max(0, Math.min(1.25, qualityRaw / Math.max(1, rounds)));
+
+    const multiplierJokerPerRound = Math.ceil(Math.max(0, current.data.SpecialMultiplier) / rounds);
+    const minPerRound = Math.max(10, minRank * 5);
+    const maxHand = (Object.keys(handMul) as Array<keyof typeof handMul>).reduce((best, h) => {
+      const cap = upper[h as keyof typeof upper] ?? 0;
+      if (cap > 0 && handMul[h] > handMul[best]) return h;
+      return best;
+    }, "HighCard");
+    const maxPerRound = Math.max(minPerRound + 1, maxRank * 5 * (handMul[maxHand] + multiplierJokerPerRound));
+
+    const min = rounds * minPerRound;
+    const max = rounds * maxPerRound;
+    // Bias toward a lower, more achievable recommendation, but lift slightly for richer hand distribution.
+    const scoreSpan = Math.max(0, max - min);
+    const recommendationRatio = Math.max(0.16, Math.min(0.48, 0.22 + quality * 0.2 + ((avgRank - 8) / 20) * 0.08));
+    const recommended = min + Math.floor(scoreSpan * recommendationRatio);
+    return { min, max, recommended };
+  }, [current]);
   const validation = useMemo(
     () => validateLevel(current?.data ?? null, summaries),
     [current, summaries],
@@ -788,50 +852,31 @@ export default function App() {
                     onChange={(e) => updateData((d) => ({ ...d, TargetScore: parseInt(e.target.value, 10) || 0 }))}
                   />
                 </label>
-                <label className="field">
-                  <span>推荐目标分（TargetScoreRecommended）</span>
-                  <input
-                    type="number"
-                    value={current.data.TargetScoreRecommended}
-                    onChange={(e) => updateData((d) => ({ ...d, TargetScoreRecommended: parseInt(e.target.value, 10) || 0 }))}
-                  />
-                </label>
-                <label className="field">
-                  <span>目标分下限（TargetScoreMin）</span>
-                  <input
-                    type="number"
-                    value={current.data.TargetScoreMin}
-                    onChange={(e) => updateData((d) => ({ ...d, TargetScoreMin: parseInt(e.target.value, 10) || 0 }))}
-                  />
-                </label>
-                <label className="field">
-                  <span>目标分上限（TargetScoreMax）</span>
-                  <input
-                    type="number"
-                    value={current.data.TargetScoreMax}
-                    onChange={(e) => updateData((d) => ({ ...d, TargetScoreMax: parseInt(e.target.value, 10) || 0 }))}
-                  />
-                </label>
-                <label className="field">
-                  <span>超分通关（AllowOverScoreWin）</span>
-                  <select
-                    value={current.data.AllowOverScoreWin ? "true" : "false"}
-                    onChange={(e) => updateData((d) => ({ ...d, AllowOverScoreWin: e.target.value === "true" }))}
-                  >
-                    <option value="true">开：达到或超过目标分即通关</option>
-                    <option value="false">关：必须精确等于目标分才通关</option>
-                  </select>
-                </label>
-                <label className="field">
-                  <span>明显不可达强拦截发布（StrictBlockOnUnreachable）</span>
-                  <select
-                    value={current.data.StrictBlockOnUnreachable ? "true" : "false"}
-                    onChange={(e) => updateData((d) => ({ ...d, StrictBlockOnUnreachable: e.target.value === "true" }))}
-                  >
-                    <option value="true">开：不可达会变成 Error，禁止保存到磁盘</option>
-                    <option value="false">关：不可达只提示 Warning，不强拦截</option>
-                  </select>
-                </label>
+                <div className="field" style={{ justifyContent: "flex-end" }}>
+                  <span>推荐目标分（展示）</span>
+                  <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                    计算推荐：{scoreReference.recommended}；当前 {current.data.TargetScore}
+                    {current.data.TargetScore < scoreReference.min
+                      ? "（低于理论最小参考）"
+                      : current.data.TargetScore > scoreReference.max
+                        ? "（高于理论最大参考）"
+                        : current.data.TargetScore < scoreReference.recommended
+                          ? "（低于推荐）"
+                          : current.data.TargetScore > scoreReference.recommended
+                            ? "（高于推荐）"
+                            : "（等于推荐）"}
+                  </div>
+                </div>
+                <div className="field" style={{ justifyContent: "flex-end" }}>
+                  <span>理论最大/最小分（展示）</span>
+                  <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                    理论最小：{scoreReference.min}；理论最大：{scoreReference.max}（仅参考，不写入 JSON）
+                  </div>
+                </div>
+                <div className="field" style={{ justifyContent: "flex-end" }}>
+                  <span>明显不可达拦截</span>
+                  <div style={{ color: "var(--muted)", fontSize: 12 }}>固定：开启（不可达按 Error 拦截发布）</div>
+                </div>
                 <label className="field">
                   <span>胜利条件（WinConditionMode）</span>
                   <select

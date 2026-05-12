@@ -62,15 +62,7 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
   }
 
   if (needsScoreTarget) {
-    if (level.TargetScoreMin > 0 && level.TargetScore < level.TargetScoreMin) {
-      messages.push({ severity: "warning", message: `TargetScore 低于推荐下限 TargetScoreMin（${level.TargetScoreMin}）。` });
-    }
-    if (level.TargetScoreMax > 0 && level.TargetScore > level.TargetScoreMax) {
-      messages.push({ severity: "warning", message: `TargetScore 高于推荐上限 TargetScoreMax（${level.TargetScoreMax}）。` });
-    }
-    if (!level.AllowOverScoreWin && level.TargetScore > 0) {
-      messages.push({ severity: "info", message: "已关闭“超分通关”：预览/运行时需要分数精确等于 TargetScore 才算达标。" });
-    }
+    messages.push({ severity: "info", message: "分数判定固定为“达到或超过 TargetScore 即达标”。" });
   }
 
   if (!level.PoolSuits || level.PoolSuits.length === 0) {
@@ -256,7 +248,7 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
     const scoreUpperBound = rounds * maxSum * maxMul;
     if (scoreUpperBound > 0 && level.TargetScore > scoreUpperBound) {
       messages.push({
-        severity: level.StrictBlockOnUnreachable ? "error" : "warning",
+        severity: "error",
         message: `TargetScore=${level.TargetScore} 明显不可达：按极粗上界，最多约 ${scoreUpperBound}（${rounds} 次结算 × 最高点数和 ${maxSum} × 最高倍率约 ${maxMul}）。`,
       });
     }

@@ -584,7 +584,7 @@ export function LevelPreviewPage({ level, onClose }: Props) {
     let nextStatus: "running" | "win" | "fail" = "running";
     const nextObjCounts = { ...objectiveCounts, [evalRes.handType]: (objectiveCounts[evalRes.handType] ?? 0) + 1 };
     setObjectiveCounts(nextObjCounts);
-    const scoreMet = !needsScore || (level.AllowOverScoreWin ? total >= level.TargetScore : total === level.TargetScore);
+    const scoreMet = !needsScore || total >= level.TargetScore;
     const objMet = !needsObjectives || isObjectivesMet(nextObjCounts);
     const winMode = level.WinConditionMode;
     const win =
