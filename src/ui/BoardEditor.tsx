@@ -14,6 +14,7 @@ import { BOARD_SUIT_CODES, RANK_MAX, RANK_MIN, type BoardSuitCode } from "../dom
 
 interface Props {
   totalCards: number;
+  isSingleDeck: boolean;
   boardLayout: LevelBoardSlotData[];
   onChange: (next: LevelBoardSlotData[]) => void;
   onTotalCardsChange: (n: number) => void;
@@ -130,6 +131,7 @@ function preloadCardSprites(): void {
 
 export function BoardEditor({
   totalCards,
+  isSingleDeck,
   boardLayout,
   onChange,
   onTotalCardsChange,
@@ -168,6 +170,13 @@ export function BoardEditor({
   const hasFixedBoardCards = useMemo(
     () => boardLayout.some((slot) => slot.Suit !== "N" && slot.Rank >= RANK_MIN && slot.Rank <= RANK_MAX),
     [boardLayout],
+  );
+
+  const isCardUsedByOtherSlot = useCallback(
+    (suit: string, rank: number, currentIndex: number): boolean =>
+      isSingleDeck &&
+      boardLayout.some((slot, index) => index !== currentIndex && slot.Suit === suit && slot.Rank === rank),
+    [boardLayout, isSingleDeck],
   );
 
   const vb = useMemo(() => {
@@ -365,14 +374,23 @@ export function BoardEditor({
               value={selectedSlot.Suit}
               onChange={(e) => {
                 const suit = e.target.value as BoardSuitCode;
+                const nextRank =
+                  suit === "N" ? 0 : selectedSlot.Rank >= RANK_MIN && selectedSlot.Rank <= RANK_MAX ? selectedSlot.Rank : RANK_MIN;
+                if (suit !== "N" && isCardUsedByOtherSlot(suit, nextRank, selected)) {
+                  return;
+                }
                 updateSlot(selected, {
                   Suit: suit,
-                  Rank: suit === "N" ? 0 : selectedSlot.Rank >= RANK_MIN && selectedSlot.Rank <= RANK_MAX ? selectedSlot.Rank : RANK_MIN,
+                  Rank: nextRank,
                 });
               }}
             >
               {BOARD_SUIT_CODES.map((s) => (
-                <option key={s} value={s}>
+                <option
+                  key={s}
+                  value={s}
+                  disabled={s !== "N" && isCardUsedByOtherSlot(s, selectedSlot.Rank, selected)}
+                >
                   {s}
                 </option>
               ))}
@@ -385,12 +403,15 @@ export function BoardEditor({
               disabled={selectedSlot.Suit === "N"}
               onChange={(e) => {
                 const rank = parseInt(e.target.value, 10) || 0;
+                if (selectedSlot.Suit !== "N" && isCardUsedByOtherSlot(selectedSlot.Suit, rank, selected)) {
+                  return;
+                }
                 updateSlot(selected, { Rank: selectedSlot.Suit === "N" ? 0 : rank });
               }}
             >
               <option value={0}>0</option>
               {Array.from({ length: RANK_MAX - RANK_MIN + 1 }, (_, i) => RANK_MIN + i).map((r) => (
-                <option key={r} value={r}>
+                <option key={r} value={r} disabled={isCardUsedByOtherSlot(selectedSlot.Suit, r, selected)}>
                   {rankLabel(r)}
                 </option>
               ))}
@@ -600,16 +621,24 @@ VisibleRatio: ${(ratio * 100).toFixed(0)}%`}
                 const slot = { ...pickerSlot, Suit: suit, Rank: rank };
                 const href = cardSpriteHref(slot);
                 const active = pickerSlot.Suit === suit && pickerSlot.Rank === rank;
+                const usedByOtherSlot = isCardUsedByOtherSlot(suit, rank, pickerIndex);
                 return (
                   <button
                     key={`${suit}-${rank}`}
                     type="button"
-                    title={`${suit}${rankLabel(rank)}`}
-                    onClick={() => updateSlot(pickerIndex, { Suit: suit, Rank: rank })}
+                    title={usedByOtherSlot ? `${suit}${rankLabel(rank)} 已被其他槽位使用` : `${suit}${rankLabel(rank)}`}
+                    disabled={usedByOtherSlot}
+                    onClick={() => {
+                      if (!usedByOtherSlot) {
+                        updateSlot(pickerIndex, { Suit: suit, Rank: rank });
+                      }
+                    }}
                     style={{
                       padding: 2,
                       borderColor: active ? "var(--accent)" : "var(--border)",
                       background: active ? "#2a3f7a" : "#0a0d12",
+                      opacity: usedByOtherSlot ? 0.28 : 1,
+                      cursor: usedByOtherSlot ? "not-allowed" : "pointer",
                     }}
                   >
                     {href ? (

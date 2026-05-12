@@ -25,6 +25,7 @@ export interface LevelConfigData {
   TotalCards: number;
   TargetScore: number;
   WinConditionMode: LevelWinConditionMode;
+  IsSingleDeck: boolean;
   PoolSuits: SuitCode[] | string[];
   PoolRanks: number[];
   SpecialWild: number;
@@ -70,6 +71,7 @@ export function normalizeLevelConfig(raw: unknown): LevelConfigData | null {
     TotalCards: coerceInt(o.TotalCards, 0),
     TargetScore: coerceInt(o.TargetScore, 0),
     WinConditionMode: coerceInt(o.WinConditionMode, 0) as LevelConfigData["WinConditionMode"],
+    IsSingleDeck: coerceBool(o.IsSingleDeck, true),
     PoolSuits: Array.isArray(o.PoolSuits) ? (o.PoolSuits as string[]) : [],
     PoolRanks: Array.isArray(o.PoolRanks) ? (o.PoolRanks as number[]).map((n) => coerceInt(n, 0)) : [],
     SpecialWild: coerceInt(o.SpecialWild, 0),
@@ -111,6 +113,25 @@ function normalizeBoardSlots(v: unknown): LevelBoardSlotData[] {
         Rank: coerceInt(r.Rank, 0),
       };
     });
+}
+
+function coerceBool(v: unknown, fallback: boolean): boolean {
+  if (typeof v === "boolean") {
+    return v;
+  }
+  if (typeof v === "number") {
+    return v !== 0;
+  }
+  if (typeof v === "string") {
+    const normalized = v.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") {
+      return true;
+    }
+    if (normalized === "false" || normalized === "0") {
+      return false;
+    }
+  }
+  return fallback;
 }
 
 function normalizeObjectives(v: unknown): LevelObjectiveData[] {

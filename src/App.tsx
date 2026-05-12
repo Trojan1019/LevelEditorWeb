@@ -688,6 +688,16 @@ export default function App() {
                     <option value={LevelWinConditionMode.ScoreOrObjectives}>{WIN_MODE_LABELS[LevelWinConditionMode.ScoreOrObjectives]}</option>
                   </select>
                 </label>
+                <label className="field">
+                  <span>是否只有一副牌（IsSingleDeck）</span>
+                  <select
+                    value={current.data.IsSingleDeck ? "true" : "false"}
+                    onChange={(e) => updateData((d) => ({ ...d, IsSingleDeck: e.target.value === "true" }))}
+                  >
+                    <option value="true">是：52 张普通牌只能各用一次</option>
+                    <option value="false">否：允许重复固定同一张牌</option>
+                  </select>
+                </label>
               </div>
               <div className="panel">
                 <div style={{ marginBottom: 8, fontWeight: 600 }}>花色池（PoolSuits）</div>
@@ -901,6 +911,7 @@ export default function App() {
               </div>
               <BoardEditor
                 totalCards={current.data.TotalCards}
+                isSingleDeck={current.data.IsSingleDeck}
                 boardLayout={current.data.BoardLayout}
                 onChange={(layout) => updateData((d) => ({ ...d, BoardLayout: layout }))}
                 onTotalCardsChange={(n) => updateData((d) => ({ ...d, TotalCards: n }))}

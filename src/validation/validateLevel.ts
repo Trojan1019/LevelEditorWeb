@@ -119,18 +119,31 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
     }
 
     const keyCounts = new Map<string, number>();
+    const fixedCardCounts = new Map<string, number>();
     for (const slot of layout) {
       if (!slot) {
         continue;
       }
       const k = `${slot.Layer}:${slot.X}:${slot.Y}`;
       keyCounts.set(k, (keyCounts.get(k) ?? 0) + 1);
+      if (level.IsSingleDeck && slot.Suit !== "N" && slot.Rank >= RANK_MIN && slot.Rank <= RANK_MAX) {
+        const cardKey = `${slot.Suit}${slot.Rank}`;
+        fixedCardCounts.set(cardKey, (fixedCardCounts.get(cardKey) ?? 0) + 1);
+      }
     }
     for (const [k, c] of keyCounts) {
       if (c > 1) {
         messages.push({
           severity: "warning",
           message: `BoardLayout 存在同层同坐标重复槽位：${k}。`,
+        });
+      }
+    }
+    for (const [cardKey, c] of fixedCardCounts) {
+      if (c > 1) {
+        messages.push({
+          severity: "error",
+          message: `IsSingleDeck 为 true 时，固定牌 ${cardKey} 只能使用一次。`,
         });
       }
     }
