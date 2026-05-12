@@ -29,6 +29,8 @@ const SUIT_FILE_PREFIX: Record<string, string> = {
   C: "clubs",
   S: "spades",
 };
+const NORMAL_CARD_SUITS = ["H", "D", "C", "S"] as const;
+const preloadedCardSprites = new Set<string>();
 
 function loadSnap(key: string, fallback: number): number {
   try {
@@ -107,6 +109,25 @@ function cardSpriteHref(slot: LevelBoardSlotData): string | null {
   return publicAssetPath(`sprites/cards/${prefix}_${rank}.png`);
 }
 
+function allNormalCardSpriteHrefs(): string[] {
+  return NORMAL_CARD_SUITS.flatMap((suit) =>
+    Array.from({ length: RANK_MAX - RANK_MIN + 1 }, (_, i) =>
+      cardSpriteHref({ X: 0, Y: 0, Layer: 0, Suit: suit, Rank: RANK_MIN + i }),
+    ),
+  ).filter((href): href is string => Boolean(href));
+}
+
+function preloadCardSprites(): void {
+  for (const href of allNormalCardSpriteHrefs()) {
+    if (preloadedCardSprites.has(href)) {
+      continue;
+    }
+    preloadedCardSprites.add(href);
+    const img = new Image();
+    img.src = href;
+  }
+}
+
 export function BoardEditor({
   totalCards,
   boardLayout,
@@ -181,9 +202,18 @@ export function BoardEditor({
     saveSnap(SNAP_Y_STORAGE_KEY, snapY);
   }, [snapY]);
 
+  useEffect(() => {
+    preloadCardSprites();
+  }, []);
+
   const onPointerDownSlot = (e: React.PointerEvent, index: number) => {
-    (e.currentTarget as SVGGElement).setPointerCapture(e.pointerId);
     setSelected(index);
+    if (pickerIndex >= 0) {
+      setPickerIndex(index);
+      dragRef.current = null;
+      return;
+    }
+    (e.currentTarget as SVGGElement).setPointerCapture(e.pointerId);
     const svg = (e.currentTarget as SVGGElement).ownerSVGElement;
     if (!svg) {
       return;
@@ -565,7 +595,7 @@ VisibleRatio: ${(ratio * 100).toFixed(0)}%`}
             <span style={{ color: "var(--muted)" }}>当前：{slotFaceLabel(pickerSlot)}</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(13, minmax(0, 1fr))", gap: 6 }}>
-            {(["H", "D", "C", "S"] as const).flatMap((suit) =>
+            {NORMAL_CARD_SUITS.flatMap((suit) =>
               Array.from({ length: RANK_MAX - RANK_MIN + 1 }, (_, i) => RANK_MIN + i).map((rank) => {
                 const slot = { ...pickerSlot, Suit: suit, Rank: rank };
                 const href = cardSpriteHref(slot);
