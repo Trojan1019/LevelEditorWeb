@@ -841,7 +841,8 @@ export default function App() {
                   <input
                     type="number"
                     value={current.data.TotalCards}
-                    onChange={(e) => updateData((d) => ({ ...d, TotalCards: parseInt(e.target.value, 10) || 0 }))}
+                    readOnly
+                    title="由槽位数自动同步"
                   />
                 </label>
                 <label className="field">
@@ -1534,8 +1535,7 @@ export default function App() {
                 specialWild={current.data.SpecialWild}
                 specialMultiplier={current.data.SpecialMultiplier}
                 specialSuit={current.data.SpecialSuit}
-                onChange={(layout) => updateData((d) => ({ ...d, BoardLayout: layout }))}
-                onTotalCardsChange={(n) => updateData((d) => ({ ...d, TotalCards: n }))}
+                onChange={(layout) => updateData((d) => ({ ...d, BoardLayout: layout, TotalCards: layout.length }))}
                 focusSlotIndex={focusSlotIndex}
                 onFocusSlotConsumed={() => setFocusSlotIndex(null)}
               />

@@ -420,6 +420,20 @@ export function LevelPreviewPage({ level, onClose }: Props) {
   const [addWildCount, setAddWildCount] = useState(0);
 
   const activeCards = useMemo(() => cards.filter((c) => !c.removed), [cards]);
+  const activeCardsForDraw = useMemo(
+    () =>
+      [...activeCards].sort((a, b) => {
+        if (a.layer !== b.layer) {
+          return a.layer - b.layer;
+        }
+        const ai = Number.parseInt(a.id.replace(/\D+/g, ""), 10);
+        const bi = Number.parseInt(b.id.replace(/\D+/g, ""), 10);
+        const ao = Number.isFinite(ai) ? ai : 1_000_000;
+        const bo = Number.isFinite(bi) ? bi : 1_000_000;
+        return ao - bo;
+      }),
+    [activeCards],
+  );
   const visibleRatios = useMemo(
     () => computeVisibleRatios(activeCards.map((c) => ({ X: c.x, Y: c.y, Layer: c.layer, Suit: "N", Rank: 0 } as LevelBoardSlotData))),
     [activeCards],
@@ -717,7 +731,7 @@ export function LevelPreviewPage({ level, onClose }: Props) {
         <main style={{ flex: 1, padding: 10, minHeight: 0 }}>
           <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", background: "#0a0d12", height: "100%" }}>
             <svg width="100%" height="100%" viewBox={vb}>
-              {activeCards.map((c) => {
+              {activeCardsForDraw.map((c) => {
                 const rx = c.x - SOURCE_CARD_WIDTH / 2;
                 const ry = c.y - SOURCE_CARD_HEIGHT / 2;
                 const can = clickable.has(c.id);

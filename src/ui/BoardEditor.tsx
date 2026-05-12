@@ -8,7 +8,7 @@ import {
   SOURCE_CARD_HEIGHT,
   SOURCE_CARD_WIDTH,
 } from "../board/boardConstants";
-import { appendGridSlots, createGridSlots, snapToInt, sortSlotsByLayer } from "../board/boardLayoutFactory";
+import { createGridSlots, snapToInt, sortSlotsByLayer } from "../board/boardLayoutFactory";
 import type { LevelBoardSlotData } from "../domain/levelTypes";
 import { BOARD_SUIT_CODES, RANK_MAX, RANK_MIN, type BoardSuitCode } from "../domain/enums";
 
@@ -20,7 +20,6 @@ interface Props {
   specialMultiplier: number;
   specialSuit: number;
   onChange: (next: LevelBoardSlotData[]) => void;
-  onTotalCardsChange: (n: number) => void;
   focusSlotIndex?: number | null;
   onFocusSlotConsumed?: () => void;
 }
@@ -159,7 +158,6 @@ export function BoardEditor({
   specialMultiplier,
   specialSuit,
   onChange,
-  onTotalCardsChange,
   focusSlotIndex,
   onFocusSlotConsumed,
 }: Props) {
@@ -182,19 +180,15 @@ export function BoardEditor({
 
   const layoutStatus =
     boardLayout.length === 0
-      ? { text: "空布局 → 运行时自动布局", cls: "warn" as const }
-      : boardLayout.length === totalCards
-        ? { text: "显式布局生效", cls: "ok" as const }
-        : boardLayout.length < totalCards
-          ? { text: `少槽位 (${boardLayout.length} / ${totalCards})`, cls: "warn" as const }
-          : { text: `多槽位 (${boardLayout.length} / ${totalCards})`, cls: "warn" as const };
+      ? { text: "空布局", cls: "warn" as const }
+      : { text: `显式布局（槽位数 ${boardLayout.length}）`, cls: "ok" as const };
 
   const clickInfo = useMemo(() => {
-    if (boardLayout.length !== totalCards || boardLayout.length === 0) {
+    if (boardLayout.length === 0) {
       return null;
     }
     return computeVisibleRatios(boardLayout);
-  }, [boardLayout, totalCards]);
+  }, [boardLayout]);
 
   const placedSpecialCounts = useMemo(() => {
     let wild = 0;
@@ -229,15 +223,19 @@ export function BoardEditor({
   const visibleLayerSet = useMemo(() => (visibleLayers ? new Set(visibleLayers) : null), [visibleLayers]);
 
   const displayedIndices = useMemo(() => {
-    if (!visibleLayerSet) {
-      return boardLayout.map((_, i) => i);
-    }
     const out: number[] = [];
     for (let i = 0; i < boardLayout.length; i++) {
-      if (visibleLayerSet.has(boardLayout[i].Layer)) {
+      if (!visibleLayerSet || visibleLayerSet.has(boardLayout[i].Layer)) {
         out.push(i);
       }
     }
+    // Draw order: layer first; index only breaks ties in same layer.
+    out.sort((a, b) => {
+      const la = boardLayout[a]?.Layer ?? 0;
+      const lb = boardLayout[b]?.Layer ?? 0;
+      if (la !== lb) return la - lb;
+      return a - b;
+    });
     return out;
   }, [boardLayout, visibleLayerSet]);
 
@@ -364,11 +362,6 @@ export function BoardEditor({
 
   const onPointerDownSlot = (e: React.PointerEvent, index: number) => {
     setSelected(index);
-    if (pickerIndex >= 0) {
-      setPickerIndex(index);
-      dragRef.current = null;
-      return;
-    }
     (e.currentTarget as SVGGElement).setPointerCapture(e.pointerId);
     const svg = (e.currentTarget as SVGGElement).ownerSVGElement;
     if (!svg) {
@@ -417,6 +410,9 @@ export function BoardEditor({
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <span className={`layout-status ${layoutStatus.cls}`}>{layoutStatus.text}</span>
         {hasFixedBoardCards ? <span className="layout-status ok">固定牌面模式</span> : null}
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <span style={{ color: "var(--muted)", fontSize: 12 }}>小丑牌放置：</span>
         <button
           type="button"
@@ -454,6 +450,9 @@ export function BoardEditor({
           </select>
         ) : null}
         {specialPicker ? <span style={{ color: "var(--accent)", fontSize: 12 }}>已进入放置模式：单击槽位放置/取消</span> : null}
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
           吸附 X
           <input type="number" value={snapX} onChange={(e) => setSnapX(Math.max(1, parseFloat(e.target.value) || 1))} />
@@ -471,6 +470,9 @@ export function BoardEditor({
         >
           恢复默认吸附
         </button>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <div ref={layerDropdownRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: 6 }}>
           <span>层级筛选</span>
           <button type="button" onClick={() => setLayerDropdownOpen((v) => !v)} aria-expanded={layerDropdownOpen} title="点击展开层级筛选">
@@ -535,19 +537,6 @@ export function BoardEditor({
         </button>
         <button type="button" onClick={() => onChange(createGridSlots(totalCards))}>
           默认矩阵
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            const next = [...boardLayout];
-            appendGridSlots(next, totalCards);
-            onChange(next);
-          }}
-        >
-          补齐到总牌数（TotalCards）
-        </button>
-        <button type="button" onClick={() => onTotalCardsChange(boardLayout.length)}>
-          同步总牌数 = 槽位数
         </button>
         <button
           type="button"
@@ -951,7 +940,7 @@ VisibleRatio: ${(ratio * 100).toFixed(0)}%`}
         </div>
       ) : null}
       <div style={{ color: "var(--muted)", fontSize: 11 }}>
-        单击或拖拽移动槽位；双击槽位选择固定牌面，N/0 表示不固定。遮挡可点预览需 BoardLayout 槽位数等于 TotalCards。可点阈值与运行时一致（可见比例 ≥ 70%）。
+        单击或拖拽移动槽位；双击槽位选择固定牌面，N/0 表示不固定。遮挡可点预览基于当前槽位直接计算（可见比例 ≥ 70%）。
         坐标与数据一致：预览为浏览器 SVG 惯例，<strong>Y 轴向下为正</strong>（数值越大越靠画面下方）；青色虚线为数据 Y = {SNAP_ORIGIN_Y} 的基准行。若运行时世界坐标 Y 向上，请在客户端对 BoardLayout.Y 做符号换算。
       </div>
     </div>
