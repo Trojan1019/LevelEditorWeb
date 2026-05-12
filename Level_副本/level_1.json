@@ -2,16 +2,13 @@
   "Id": 1,
   "TitleKey": "",
   "DescriptionKey": "",
-  "TotalCards": 21,
+  "TotalCards": 25,
   "TargetScore": 300,
   "WinConditionMode": 0,
-  "IsSingleDeck": false,
-  "Seed": 4154033066,
+  "IsSingleDeck": true,
+  "Seed": 119097763,
   "PoolSuits": [
-    "H",
-    "D",
-    "C",
-    "S"
+    "H"
   ],
   "PoolRanks": [
     2,
@@ -20,12 +17,7 @@
     5,
     6,
     7,
-    8,
-    9,
-    11,
-    12,
-    13,
-    14
+    8
   ],
   "SpecialWild": 0,
   "SpecialMultiplier": 0,
@@ -33,165 +25,131 @@
   "ItemStorage": 1,
   "ItemShuffle": 0,
   "ItemAddWild": 0,
-  "BoardLayout": [
+  "RandomEliminationRules": [
     {
-      "X": -60,
-      "Y": -80,
-      "Layer": 0,
-      "Suit": "C",
-      "Rank": 13
+      "Enabled": true,
+      "Trigger": "OnHighCard",
+      "RemoveCount": 3,
+      "Range": "All",
+      "Layers": [],
+      "ExcludeFixedCards": true,
+      "ExcludeJokers": false
     },
     {
-      "X": -20,
-      "Y": -80,
-      "Layer": 0,
-      "Suit": "S",
-      "Rank": 14
-    },
-    {
-      "X": 20,
-      "Y": -80,
-      "Layer": 0,
-      "Suit": "H",
-      "Rank": 2
-    },
-    {
-      "X": 60,
-      "Y": -80,
-      "Layer": 0,
-      "Suit": "C",
-      "Rank": 9
-    },
-    {
-      "X": -60,
-      "Y": -40,
-      "Layer": 0,
-      "Suit": "C",
-      "Rank": 8
-    },
-    {
-      "X": -20,
-      "Y": -40,
-      "Layer": 0,
-      "Suit": "H",
-      "Rank": 8
-    },
-    {
-      "X": 20,
-      "Y": -40,
-      "Layer": 0,
-      "Suit": "C",
-      "Rank": 12
-    },
-    {
-      "X": 60,
-      "Y": -40,
-      "Layer": 0,
-      "Suit": "H",
-      "Rank": 6
-    },
-    {
-      "X": -40,
-      "Y": -100,
-      "Layer": 1,
-      "Suit": "H",
-      "Rank": 13
-    },
-    {
-      "X": 0,
-      "Y": -100,
-      "Layer": 1,
-      "Suit": "C",
-      "Rank": 4
-    },
-    {
-      "X": 40,
-      "Y": -100,
-      "Layer": 1,
-      "Suit": "D",
-      "Rank": 5
-    },
-    {
-      "X": -40,
-      "Y": -60,
-      "Layer": 1,
-      "Suit": "H",
-      "Rank": 12
-    },
-    {
-      "X": 0,
-      "Y": -60,
-      "Layer": 1,
-      "Suit": "S",
-      "Rank": 2
-    },
-    {
-      "X": 40,
-      "Y": -60,
-      "Layer": 1,
-      "Suit": "C",
-      "Rank": 3
-    },
-    {
-      "X": 0,
-      "Y": -20,
-      "Layer": 1,
-      "Suit": "S",
-      "Rank": 5
-    },
-    {
-      "X": -20,
-      "Y": -80,
-      "Layer": 2,
-      "Suit": "S",
-      "Rank": 8
-    },
-    {
-      "X": 20,
-      "Y": 0,
-      "Layer": 2,
-      "Suit": "H",
-      "Rank": 4
-    },
-    {
-      "X": -20,
-      "Y": -40,
-      "Layer": 2,
-      "Suit": "C",
-      "Rank": 2
-    },
-    {
-      "X": 20,
-      "Y": 0,
-      "Layer": 2,
-      "Suit": "C",
-      "Rank": 7
-    },
-    {
-      "X": -20,
-      "Y": -60,
-      "Layer": 3,
-      "Suit": "D",
-      "Rank": 12
-    },
-    {
-      "X": -20,
-      "Y": -40,
-      "Layer": 3,
-      "Suit": "H",
-      "Rank": 7
+      "Enabled": true,
+      "Trigger": "OnPairStreak2",
+      "RemoveCount": 3,
+      "Range": "All",
+      "Layers": [],
+      "ExcludeFixedCards": true,
+      "ExcludeJokers": false
     }
   ],
-  "Objectives": [
+  "BoardLayout": [
     {
-      "HandType": "Flush",
-      "Count": 1,
-      "Reward": 50
+      "X": 50,
+      "Y": -70,
+      "Layer": 0,
+      "Suit": "H",
+      "Rank": 13,
+      "Special": ""
     },
     {
-      "HandType": "Pair",
-      "Count": 1,
-      "Reward": 0
+      "X": 0,
+      "Y": 0,
+      "Layer": 0,
+      "Suit": "H",
+      "Rank": 12,
+      "Special": ""
+    },
+    {
+      "X": -50,
+      "Y": -70,
+      "Layer": 0,
+      "Suit": "H",
+      "Rank": 11,
+      "Special": ""
+    },
+    {
+      "X": 50,
+      "Y": 0,
+      "Layer": 0,
+      "Suit": "H",
+      "Rank": 8,
+      "Special": ""
+    },
+    {
+      "X": 0,
+      "Y": -70,
+      "Layer": 0,
+      "Suit": "H",
+      "Rank": 10,
+      "Special": ""
+    },
+    {
+      "X": -50,
+      "Y": 0,
+      "Layer": 0,
+      "Suit": "H",
+      "Rank": 9,
+      "Special": ""
+    },
+    {
+      "X": -30,
+      "Y": -80,
+      "Layer": 1,
+      "Suit": "H",
+      "Rank": 14,
+      "Special": ""
+    },
+    {
+      "X": 30,
+      "Y": -80,
+      "Layer": 1,
+      "Suit": "H",
+      "Rank": 7,
+      "Special": ""
+    },
+    {
+      "X": -30,
+      "Y": -10,
+      "Layer": 1,
+      "Suit": "H",
+      "Rank": 4,
+      "Special": ""
+    },
+    {
+      "X": 30,
+      "Y": -10,
+      "Layer": 1,
+      "Suit": "H",
+      "Rank": 5,
+      "Special": ""
+    },
+    {
+      "X": -22,
+      "Y": -50,
+      "Layer": 2,
+      "Suit": "H",
+      "Rank": 6,
+      "Special": ""
+    },
+    {
+      "X": 22,
+      "Y": -50,
+      "Layer": 2,
+      "Suit": "H",
+      "Rank": 2,
+      "Special": ""
+    },
+    {
+      "X": 0,
+      "Y": -30,
+      "Layer": 0,
+      "Suit": "H",
+      "Rank": 3,
+      "Special": ""
     }
-  ]
+  ],
+  "Objectives": []
 }
