@@ -61,6 +61,18 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
     });
   }
 
+  if (needsScoreTarget) {
+    if (level.TargetScoreMin > 0 && level.TargetScore < level.TargetScoreMin) {
+      messages.push({ severity: "warning", message: `TargetScore 低于推荐下限 TargetScoreMin（${level.TargetScoreMin}）。` });
+    }
+    if (level.TargetScoreMax > 0 && level.TargetScore > level.TargetScoreMax) {
+      messages.push({ severity: "warning", message: `TargetScore 高于推荐上限 TargetScoreMax（${level.TargetScoreMax}）。` });
+    }
+    if (!level.AllowOverScoreWin && level.TargetScore > 0) {
+      messages.push({ severity: "info", message: "已关闭“超分通关”：预览/运行时需要分数精确等于 TargetScore 才算达标。" });
+    }
+  }
+
   if (!level.PoolSuits || level.PoolSuits.length === 0) {
     messages.push({ severity: "error", message: "PoolSuits 不能为空。" });
   } else if (level.PoolSuits.some((code) => !code || String(code).trim() === "" || !validSuitCodes.has(String(code)))) {
@@ -78,6 +90,18 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
   }
 
   if (level.ItemStorage < 0 || level.ItemShuffle < 0 || level.ItemAddWild < 0) {
+  // Random elimination rules sanity
+  const rules = level.RandomEliminationRules ?? [];
+  for (let i = 0; i < rules.length; i++) {
+    const r = rules[i];
+    if (!r) continue;
+    if (r.RemoveCount < 0) {
+      messages.push({ severity: "error", message: `RandomEliminationRules[${i}] 的 RemoveCount 不能为负数。` });
+    }
+    if (r.Range === "Layers" && (!r.Layers || r.Layers.length === 0)) {
+      messages.push({ severity: "warning", message: `RandomEliminationRules[${i}] 的 Range=Layers 但未配置 Layers，等同于不消除。` });
+    }
+  }
     messages.push({ severity: "error", message: "道具初始次数不能为负数。" });
   }
 
@@ -148,6 +172,26 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
         });
       }
     }
+
+    const specialCounts = { Wild: 0, Multiplier: 0, Suit: 0 };
+    for (const slot of layout) {
+      const sp = typeof slot?.Special === "string" ? slot.Special : "";
+      if (sp === "Wild") specialCounts.Wild++;
+      else if (sp === "Multiplier") specialCounts.Multiplier++;
+      else if (sp === "SuitH" || sp === "SuitD" || sp === "SuitC" || sp === "SuitS") specialCounts.Suit++;
+    }
+    if (specialCounts.Wild > level.SpecialWild) {
+      messages.push({ severity: "error", message: `BoardLayout 中手动放置的万能小丑数量为 ${specialCounts.Wild}，超过 SpecialWild=${level.SpecialWild}。` });
+    }
+    if (specialCounts.Multiplier > level.SpecialMultiplier) {
+      messages.push({
+        severity: "error",
+        message: `BoardLayout 中手动放置的倍率小丑数量为 ${specialCounts.Multiplier}，超过 SpecialMultiplier=${level.SpecialMultiplier}。`,
+      });
+    }
+    if (specialCounts.Suit > level.SpecialSuit) {
+      messages.push({ severity: "error", message: `BoardLayout 中手动放置的变化小丑数量为 ${specialCounts.Suit}，超过 SpecialSuit=${level.SpecialSuit}。` });
+    }
   } else {
     messages.push({
       severity: "info",
@@ -201,6 +245,20 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
       for (const msg of objectiveReachabilityMessages(level, multiset, sourceLabel)) {
         messages.push(msg);
       }
+    }
+  }
+
+  // Obvious unreachable: score upper bound (very coarse) for strong block publishing.
+  if (needsScoreTarget && level.TargetScore > 0) {
+    const rounds = Math.floor(Math.max(0, level.TotalCards) / 5);
+    const maxSum = 60; // 10..A
+    const maxMul = 9 + Math.max(0, level.SpecialMultiplier); // multiplier joker can add +1 each (upper bound)
+    const scoreUpperBound = rounds * maxSum * maxMul;
+    if (scoreUpperBound > 0 && level.TargetScore > scoreUpperBound) {
+      messages.push({
+        severity: level.StrictBlockOnUnreachable ? "error" : "warning",
+        message: `TargetScore=${level.TargetScore} 明显不可达：按极粗上界，最多约 ${scoreUpperBound}（${rounds} 次结算 × 最高点数和 ${maxSum} × 最高倍率约 ${maxMul}）。`,
+      });
     }
   }
 

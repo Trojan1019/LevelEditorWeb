@@ -9,7 +9,12 @@ export function createDefaultLevel(levelId: number): LevelConfigData {
     DescriptionKey: "",
     TotalCards: 25,
     TargetScore: 300,
+    TargetScoreRecommended: 300,
+    TargetScoreMin: 200,
+    TargetScoreMax: 500,
+    AllowOverScoreWin: true,
     WinConditionMode: LevelWinConditionMode.ScoreOnly,
+    StrictBlockOnUnreachable: true,
     IsSingleDeck: true,
     Seed: 0,
     PoolSuits: ["H"],
@@ -20,6 +25,10 @@ export function createDefaultLevel(levelId: number): LevelConfigData {
     ItemStorage: 1,
     ItemShuffle: 0,
     ItemAddWild: 0,
+    RandomEliminationRules: [
+      { Enabled: true, Trigger: "OnHighCard", RemoveCount: 3, Range: "All", Layers: [], ExcludeFixedCards: true, ExcludeJokers: false },
+      { Enabled: true, Trigger: "OnPairStreak2", RemoveCount: 3, Range: "All", Layers: [], ExcludeFixedCards: true, ExcludeJokers: false },
+    ],
     BoardLayout: [],
     Objectives: [
       {

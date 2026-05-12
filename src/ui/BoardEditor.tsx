@@ -16,6 +16,9 @@ interface Props {
   totalCards: number;
   isSingleDeck: boolean;
   boardLayout: LevelBoardSlotData[];
+  specialWild: number;
+  specialMultiplier: number;
+  specialSuit: number;
   onChange: (next: LevelBoardSlotData[]) => void;
   onTotalCardsChange: (n: number) => void;
   focusSlotIndex?: number | null;
@@ -116,6 +119,19 @@ function cardSpriteHref(slot: LevelBoardSlotData): string | null {
   return publicAssetPath(`sprites/cards/${prefix}_${rank}.png`);
 }
 
+function specialSpriteHref(special: NonNullable<LevelBoardSlotData["Special"]>): string | null {
+  if (special === "Wild") {
+    return publicAssetPath("sprites/cards/wild.png");
+  }
+  if (special === "Multiplier") {
+    return publicAssetPath("sprites/cards/multiplier.png");
+  }
+  if (special === "SuitH" || special === "SuitD" || special === "SuitC" || special === "SuitS") {
+    return publicAssetPath("sprites/cards/suit.png");
+  }
+  return null;
+}
+
 function allNormalCardSpriteHrefs(): string[] {
   return NORMAL_CARD_SUITS.flatMap((suit) =>
     Array.from({ length: RANK_MAX - RANK_MIN + 1 }, (_, i) =>
@@ -139,6 +155,9 @@ export function BoardEditor({
   totalCards,
   isSingleDeck,
   boardLayout,
+  specialWild,
+  specialMultiplier,
+  specialSuit,
   onChange,
   onTotalCardsChange,
   focusSlotIndex,
@@ -146,6 +165,7 @@ export function BoardEditor({
 }: Props) {
   const [selected, setSelected] = useState<number>(-1);
   const [pickerIndex, setPickerIndex] = useState<number>(-1);
+  const [specialPicker, setSpecialPicker] = useState<"" | "Wild" | "Multiplier" | "SuitH" | "SuitD" | "SuitC" | "SuitS">("");
   const [visibleLayers, setVisibleLayers] = useState<number[] | null>(null);
   const [layerDropdownOpen, setLayerDropdownOpen] = useState(false);
   const layerDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -175,6 +195,28 @@ export function BoardEditor({
     }
     return computeVisibleRatios(boardLayout);
   }, [boardLayout, totalCards]);
+
+  const placedSpecialCounts = useMemo(() => {
+    let wild = 0;
+    let mult = 0;
+    let suit = 0;
+    for (const s of boardLayout) {
+      const sp = typeof s?.Special === "string" ? s.Special : "";
+      if (sp === "Wild") wild++;
+      else if (sp === "Multiplier") mult++;
+      else if (sp === "SuitH" || sp === "SuitD" || sp === "SuitC" || sp === "SuitS") suit++;
+    }
+    return { wild, mult, suit };
+  }, [boardLayout]);
+
+  const remainSpecial = useMemo(
+    () => ({
+      wild: Math.max(0, Math.trunc(specialWild) - placedSpecialCounts.wild),
+      mult: Math.max(0, Math.trunc(specialMultiplier) - placedSpecialCounts.mult),
+      suit: Math.max(0, Math.trunc(specialSuit) - placedSpecialCounts.suit),
+    }),
+    [specialWild, specialMultiplier, specialSuit, placedSpecialCounts],
+  );
 
   const layerOptions = useMemo(() => {
     const set = new Set<number>();
@@ -265,6 +307,40 @@ export function BoardEditor({
     [boardLayout, onChange],
   );
 
+  const toggleSpecialOnSlot = useCallback(
+    (slotIndex: number) => {
+      if (!specialPicker) {
+        return;
+      }
+      const cur = boardLayout[slotIndex];
+      if (!cur) return;
+      const curSp = typeof cur.Special === "string" ? cur.Special : "";
+      const isSuitPick =
+        specialPicker === "SuitH" || specialPicker === "SuitD" || specialPicker === "SuitC" || specialPicker === "SuitS";
+      const isSameType =
+        curSp === specialPicker ||
+        (isSuitPick && (curSp === "SuitH" || curSp === "SuitD" || curSp === "SuitC" || curSp === "SuitS") && curSp === specialPicker);
+
+      const hasRemain =
+        specialPicker === "Wild"
+          ? remainSpecial.wild > 0
+          : specialPicker === "Multiplier"
+            ? remainSpecial.mult > 0
+            : remainSpecial.suit > 0;
+
+      // Allow remove even if remaining is 0.
+      if (curSp && isSameType) {
+        updateSlot(slotIndex, { Special: "" });
+        return;
+      }
+      if (!hasRemain) {
+        return;
+      }
+      updateSlot(slotIndex, { Special: specialPicker });
+    },
+    [boardLayout, remainSpecial, specialPicker, updateSlot],
+  );
+
   useEffect(() => {
     if (focusSlotIndex == null || focusSlotIndex < 0 || focusSlotIndex >= boardLayout.length) {
       return;
@@ -341,6 +417,43 @@ export function BoardEditor({
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <span className={`layout-status ${layoutStatus.cls}`}>{layoutStatus.text}</span>
         {hasFixedBoardCards ? <span className="layout-status ok">固定牌面模式</span> : null}
+        <span style={{ color: "var(--muted)", fontSize: 12 }}>小丑牌放置：</span>
+        <button
+          type="button"
+          onClick={() => setSpecialPicker((p) => (p === "Wild" ? "" : "Wild"))}
+          disabled={remainSpecial.wild <= 0 && specialPicker !== "Wild"}
+          title={remainSpecial.wild <= 0 ? "万能小丑已用完（可点已放置的槽位取消）" : "选择后单击槽位放置/取消"}
+          style={{ background: specialPicker === "Wild" ? "#243049" : undefined }}
+        >
+          万能（{remainSpecial.wild}/{Math.max(0, Math.trunc(specialWild))}）
+        </button>
+        <button
+          type="button"
+          onClick={() => setSpecialPicker((p) => (p === "Multiplier" ? "" : "Multiplier"))}
+          disabled={remainSpecial.mult <= 0 && specialPicker !== "Multiplier"}
+          title={remainSpecial.mult <= 0 ? "倍率小丑已用完（可点已放置的槽位取消）" : "选择后单击槽位放置/取消"}
+          style={{ background: specialPicker === "Multiplier" ? "#243049" : undefined }}
+        >
+          倍率（{remainSpecial.mult}/{Math.max(0, Math.trunc(specialMultiplier))}）
+        </button>
+        <button
+          type="button"
+          onClick={() => setSpecialPicker((p) => (p.startsWith("Suit") ? "" : "SuitH"))}
+          disabled={remainSpecial.suit <= 0 && !specialPicker.startsWith("Suit")}
+          title={remainSpecial.suit <= 0 ? "变化小丑已用完（可点已放置的槽位取消）" : "选择后单击槽位放置/取消；可选花色版本"}
+          style={{ background: specialPicker.startsWith("Suit") ? "#243049" : undefined }}
+        >
+          变化（{remainSpecial.suit}/{Math.max(0, Math.trunc(specialSuit))}）
+        </button>
+        {specialPicker.startsWith("Suit") ? (
+          <select value={specialPicker} onChange={(e) => setSpecialPicker(e.target.value as any)} style={{ height: 32 }}>
+            <option value="SuitH">♥</option>
+            <option value="SuitD">♦</option>
+            <option value="SuitC">♣</option>
+            <option value="SuitS">♠</option>
+          </select>
+        ) : null}
+        {specialPicker ? <span style={{ color: "var(--accent)", fontSize: 12 }}>已进入放置模式：单击槽位放置/取消</span> : null}
         <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
           吸附 X
           <input type="number" value={snapX} onChange={(e) => setSnapX(Math.max(1, parseFloat(e.target.value) || 1))} />
@@ -641,12 +754,20 @@ export function BoardEditor({
             const clickable = clickInfo ? clickInfo[i]?.clickable : true;
             const ratio = clickInfo ? clickInfo[i]?.ratio : 1;
             const isSel = i === selected;
-            const spriteHref = cardSpriteHref(s);
+            const spriteHref = s.Special ? specialSpriteHref(s.Special) : cardSpriteHref(s);
             return (
               <g
                 key={i}
                 transform={`translate(${rx},${ry})`}
                 onPointerDown={(e) => onPointerDownSlot(e, i)}
+                onClick={(e) => {
+                  if (!specialPicker) {
+                    return;
+                  }
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleSpecialOnSlot(i);
+                }}
                 onDoubleClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -740,19 +861,59 @@ VisibleRatio: ${(ratio * 100).toFixed(0)}%`}
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
             <button
               type="button"
-              className={pickerSlot.Suit === "N" ? "primary" : ""}
-              onClick={() => updateSlot(pickerIndex, { Suit: "N", Rank: 0 })}
+              className={pickerSlot.Suit === "N" && !pickerSlot.Special ? "primary" : ""}
+              onClick={() => updateSlot(pickerIndex, { Suit: "N", Rank: 0, Special: "" })}
             >
               不固定（N/0）
             </button>
-            <span style={{ color: "var(--muted)" }}>当前：{slotFaceLabel(pickerSlot)}</span>
+            <span style={{ color: "var(--muted)" }}>
+              当前：{pickerSlot.Special ? `Special:${pickerSlot.Special}` : slotFaceLabel(pickerSlot)}
+            </span>
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ marginBottom: 6, color: "var(--muted)", fontSize: 12 }}>小丑牌</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 6 }}>
+              {(
+                [
+                  { key: "Wild", label: "万能" },
+                  { key: "Multiplier", label: "倍率" },
+                  { key: "SuitH", label: "变化-H" },
+                  { key: "SuitD", label: "变化-D" },
+                  { key: "SuitC", label: "变化-C" },
+                  { key: "SuitS", label: "变化-S" },
+                ] as const
+              ).map((item) => {
+                const href = specialSpriteHref(item.key);
+                const active = pickerSlot.Special === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => updateSlot(pickerIndex, { Suit: "N", Rank: 0, Special: item.key })}
+                    style={{
+                      padding: 2,
+                      borderColor: active ? "var(--accent)" : "var(--border)",
+                      background: active ? "#2a3f7a" : "#0a0d12",
+                    }}
+                    title={item.label}
+                  >
+                    {href ? (
+                      <img src={href} alt={item.label} style={{ display: "block", width: "100%", aspectRatio: "42 / 66", objectFit: "contain" }} />
+                    ) : (
+                      item.label
+                    )}
+                    <div style={{ fontSize: 10, marginTop: 2 }}>{item.label}</div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(13, minmax(0, 1fr))", gap: 6 }}>
             {NORMAL_CARD_SUITS.flatMap((suit) =>
               Array.from({ length: RANK_MAX - RANK_MIN + 1 }, (_, i) => RANK_MIN + i).map((rank) => {
                 const slot = { ...pickerSlot, Suit: suit, Rank: rank };
                 const href = cardSpriteHref(slot);
-                const active = pickerSlot.Suit === suit && pickerSlot.Rank === rank;
+                const active = !pickerSlot.Special && pickerSlot.Suit === suit && pickerSlot.Rank === rank;
                 const usedByOtherSlot = isCardUsedByOtherSlot(suit, rank, pickerIndex);
                 return (
                   <button
@@ -762,7 +923,7 @@ VisibleRatio: ${(ratio * 100).toFixed(0)}%`}
                     disabled={usedByOtherSlot}
                     onClick={() => {
                       if (!usedByOtherSlot) {
-                        updateSlot(pickerIndex, { Suit: suit, Rank: rank });
+                        updateSlot(pickerIndex, { Suit: suit, Rank: rank, Special: "" });
                       }
                     }}
                     style={{

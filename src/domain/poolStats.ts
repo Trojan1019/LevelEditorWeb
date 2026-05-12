@@ -263,6 +263,7 @@ export function objectiveReachabilityMessages(
     level.WinConditionMode === LevelWinConditionMode.ObjectivesOnly ||
     level.WinConditionMode === LevelWinConditionMode.ScoreAndObjectives ||
     level.WinConditionMode === LevelWinConditionMode.ScoreOrObjectives;
+  const strict = !!level.StrictBlockOnUnreachable;
 
   for (let i = 0; i < (level.Objectives ?? []).length; i++) {
     const o = level.Objectives[i];
@@ -285,7 +286,7 @@ export function objectiveReachabilityMessages(
       case "Pair":
         if (pairs < c) {
           out.push({
-            severity: needsObjective ? "error" : "warning",
+            severity: needsObjective || strict ? "error" : "warning",
             message: `${tag}：${sourceLabel}中理论最多约 ${pairs} 个对子（按秩计不相交上界），不足以完成 ${c} 次。`,
           });
         }
@@ -293,7 +294,7 @@ export function objectiveReachabilityMessages(
       case "TwoPair":
         if (pairs < 2 * c) {
           out.push({
-            severity: needsObjective ? "error" : "warning",
+            severity: needsObjective || strict ? "error" : "warning",
             message: `${tag}：两对至少需要约 ${2 * c} 个「对子位」，当前上界约 ${pairs}。`,
           });
         }
@@ -301,7 +302,7 @@ export function objectiveReachabilityMessages(
       case "ThreeOfAKind":
         if (triples < c) {
           out.push({
-            severity: needsObjective ? "error" : "warning",
+            severity: needsObjective || strict ? "error" : "warning",
             message: `${tag}：三条次数上界约 ${triples}，不足以 ${c} 次。`,
           });
         }
@@ -309,7 +310,7 @@ export function objectiveReachabilityMessages(
       case "Straight":
         if (straightWinCount === 0) {
           out.push({
-            severity: needsObjective ? "error" : "warning",
+            severity: needsObjective || strict ? "error" : "warning",
             message: `${tag}：${sourceLabel}中无连续 5 个秩，无法组成顺子。`,
           });
         } else if (bestMinInWindow < c) {
@@ -322,7 +323,7 @@ export function objectiveReachabilityMessages(
       case "Flush":
         if (flushes < c) {
           out.push({
-            severity: needsObjective ? "error" : "warning",
+            severity: needsObjective || strict ? "error" : "warning",
             message: `${tag}：同花五张次数上界约 ${flushes}（各花色 floor(n/5) 之和），不足以 ${c} 次。`,
           });
         }
@@ -338,7 +339,7 @@ export function objectiveReachabilityMessages(
       case "FourOfAKind":
         if (quads < c) {
           out.push({
-            severity: needsObjective ? "error" : "warning",
+            severity: needsObjective || strict ? "error" : "warning",
             message: `${tag}：四条次数上界约 ${quads}，不足以 ${c} 次。`,
           });
         }
@@ -349,7 +350,7 @@ export function objectiveReachabilityMessages(
         const maxSf = royal ? upper.RoyalFlush : upper.StraightFlush;
         if (maxSf < c) {
           out.push({
-            severity: needsObjective ? "error" : "warning",
+            severity: needsObjective || strict ? "error" : "warning",
             message: `${tag}：在当前牌集合下，同花顺可完成次数上界约 ${maxSf}（${royal ? "仅 10–A 同花" : "某花色连续五秩"}），不足以 ${c} 次。`,
           });
         }

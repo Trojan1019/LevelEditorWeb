@@ -789,6 +789,50 @@ export default function App() {
                   />
                 </label>
                 <label className="field">
+                  <span>推荐目标分（TargetScoreRecommended）</span>
+                  <input
+                    type="number"
+                    value={current.data.TargetScoreRecommended}
+                    onChange={(e) => updateData((d) => ({ ...d, TargetScoreRecommended: parseInt(e.target.value, 10) || 0 }))}
+                  />
+                </label>
+                <label className="field">
+                  <span>目标分下限（TargetScoreMin）</span>
+                  <input
+                    type="number"
+                    value={current.data.TargetScoreMin}
+                    onChange={(e) => updateData((d) => ({ ...d, TargetScoreMin: parseInt(e.target.value, 10) || 0 }))}
+                  />
+                </label>
+                <label className="field">
+                  <span>目标分上限（TargetScoreMax）</span>
+                  <input
+                    type="number"
+                    value={current.data.TargetScoreMax}
+                    onChange={(e) => updateData((d) => ({ ...d, TargetScoreMax: parseInt(e.target.value, 10) || 0 }))}
+                  />
+                </label>
+                <label className="field">
+                  <span>超分通关（AllowOverScoreWin）</span>
+                  <select
+                    value={current.data.AllowOverScoreWin ? "true" : "false"}
+                    onChange={(e) => updateData((d) => ({ ...d, AllowOverScoreWin: e.target.value === "true" }))}
+                  >
+                    <option value="true">开：达到或超过目标分即通关</option>
+                    <option value="false">关：必须精确等于目标分才通关</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>明显不可达强拦截发布（StrictBlockOnUnreachable）</span>
+                  <select
+                    value={current.data.StrictBlockOnUnreachable ? "true" : "false"}
+                    onChange={(e) => updateData((d) => ({ ...d, StrictBlockOnUnreachable: e.target.value === "true" }))}
+                  >
+                    <option value="true">开：不可达会变成 Error，禁止保存到磁盘</option>
+                    <option value="false">关：不可达只提示 Warning，不强拦截</option>
+                  </select>
+                </label>
+                <label className="field">
                   <span>胜利条件（WinConditionMode）</span>
                   <select
                     value={current.data.WinConditionMode}
@@ -1110,14 +1154,7 @@ export default function App() {
               </div>
               <div className="panel" style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
                 <label className="field" style={{ margin: 0 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <img
-                      src={`${(import.meta as any).env?.BASE_URL ?? "./"}sprites/cards/wild.png`}
-                      alt=""
-                      style={{ width: 18, height: 18, objectFit: "contain" }}
-                    />
-                    万能小丑数量（SpecialWild）
-                  </span>
+                  <span>万能小丑数量（SpecialWild）</span>
                   <input
                     type="number"
                     value={current.data.SpecialWild}
@@ -1125,14 +1162,7 @@ export default function App() {
                   />
                 </label>
                 <label className="field" style={{ margin: 0 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <img
-                      src={`${(import.meta as any).env?.BASE_URL ?? "./"}sprites/cards/multiplier.png`}
-                      alt=""
-                      style={{ width: 18, height: 18, objectFit: "contain" }}
-                    />
-                    倍率小丑数量（SpecialMultiplier）
-                  </span>
+                  <span>倍率小丑数量（SpecialMultiplier）</span>
                   <input
                     type="number"
                     value={current.data.SpecialMultiplier}
@@ -1140,14 +1170,7 @@ export default function App() {
                   />
                 </label>
                 <label className="field" style={{ margin: 0 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <img
-                      src={`${(import.meta as any).env?.BASE_URL ?? "./"}sprites/cards/suit.png`}
-                      alt=""
-                      style={{ width: 18, height: 18, objectFit: "contain" }}
-                    />
-                    变化小丑数量（SpecialSuit）
-                  </span>
+                  <span>变化小丑数量（SpecialSuit）</span>
                   <input
                     type="number"
                     value={current.data.SpecialSuit}
@@ -1184,6 +1207,174 @@ export default function App() {
                     onChange={(e) => updateData((d) => ({ ...d, ItemAddWild: parseInt(e.target.value, 10) || 0 }))}
                   />
                 </label>
+              </div>
+              <div className="panel">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <strong>随机消除规则（RandomEliminationRules）</strong>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateData((d) => ({
+                        ...d,
+                        RandomEliminationRules: [
+                          ...(d.RandomEliminationRules ?? []),
+                          { Enabled: true, Trigger: "OnHighCard", RemoveCount: 3, Range: "All", Layers: [], ExcludeFixedCards: true, ExcludeJokers: false },
+                        ],
+                      }))
+                    }
+                  >
+                    添加规则
+                  </button>
+                </div>
+                {(current.data.RandomEliminationRules ?? []).length === 0 ? (
+                  <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 12 }}>
+                    当前为空：预览会回退到旧逻辑（高牌 / 连续两轮一对 =&gt; 随机消除 3 张）。
+                  </div>
+                ) : null}
+                {(current.data.RandomEliminationRules ?? []).map((r, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "110px 160px 110px 160px 1fr",
+                      gap: 8,
+                      alignItems: "end",
+                      marginTop: 10,
+                      paddingTop: 10,
+                      borderTop: idx === 0 ? "none" : "1px solid var(--border)",
+                    }}
+                  >
+                    <label className="field" style={{ margin: 0 }}>
+                      <span>启用</span>
+                      <select
+                        value={r.Enabled ? "true" : "false"}
+                        onChange={(e) =>
+                          updateData((d) => {
+                            const next = [...(d.RandomEliminationRules ?? [])];
+                            next[idx] = { ...next[idx], Enabled: e.target.value === "true" };
+                            return { ...d, RandomEliminationRules: next };
+                          })
+                        }
+                      >
+                        <option value="true">是</option>
+                        <option value="false">否</option>
+                      </select>
+                    </label>
+                    <label className="field" style={{ margin: 0 }}>
+                      <span>触发条件（Trigger）</span>
+                      <select
+                        value={r.Trigger}
+                        onChange={(e) =>
+                          updateData((d) => {
+                            const next = [...(d.RandomEliminationRules ?? [])];
+                            next[idx] = { ...next[idx], Trigger: e.target.value as any };
+                            return { ...d, RandomEliminationRules: next };
+                          })
+                        }
+                      >
+                        <option value="OnHighCard">高牌后（OnHighCard）</option>
+                        <option value="OnPairStreak2">连续两轮一对后（OnPairStreak2）</option>
+                      </select>
+                    </label>
+                    <label className="field" style={{ margin: 0 }}>
+                      <span>消除数量（RemoveCount）</span>
+                      <input
+                        type="number"
+                        value={r.RemoveCount}
+                        onChange={(e) =>
+                          updateData((d) => {
+                            const next = [...(d.RandomEliminationRules ?? [])];
+                            next[idx] = { ...next[idx], RemoveCount: parseInt(e.target.value, 10) || 0 };
+                            return { ...d, RandomEliminationRules: next };
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="field" style={{ margin: 0 }}>
+                      <span>消除范围（Range）</span>
+                      <select
+                        value={r.Range}
+                        onChange={(e) =>
+                          updateData((d) => {
+                            const next = [...(d.RandomEliminationRules ?? [])];
+                            const range = e.target.value as any;
+                            next[idx] = { ...next[idx], Range: range, Layers: range === "Layers" ? next[idx].Layers ?? [] : [] };
+                            return { ...d, RandomEliminationRules: next };
+                          })
+                        }
+                      >
+                        <option value="All">全牌面（All）</option>
+                        <option value="Clickable">仅可点击（Clickable）</option>
+                        <option value="Locked">仅不可点击（Locked）</option>
+                        <option value="Layers">指定层（Layers）</option>
+                      </select>
+                    </label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                      <label className="field" style={{ margin: 0, minWidth: 220 }}>
+                        <span>指定层（Layers）</span>
+                        <input
+                          value={(r.Layers ?? []).join(",")}
+                          placeholder="如 0,1,2"
+                          disabled={r.Range !== "Layers"}
+                          onChange={(e) => {
+                            const parts = e.target.value
+                              .split(",")
+                              .map((s) => s.trim())
+                              .filter(Boolean)
+                              .map((s) => parseInt(s, 10))
+                              .filter((n) => Number.isFinite(n) && n >= 0);
+                            updateData((d) => {
+                              const next = [...(d.RandomEliminationRules ?? [])];
+                              next[idx] = { ...next[idx], Layers: parts };
+                              return { ...d, RandomEliminationRules: next };
+                            });
+                          }}
+                        />
+                      </label>
+                      <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
+                        <input
+                          type="checkbox"
+                          checked={!!r.ExcludeFixedCards}
+                          onChange={(e) =>
+                            updateData((d) => {
+                              const next = [...(d.RandomEliminationRules ?? [])];
+                              next[idx] = { ...next[idx], ExcludeFixedCards: e.target.checked };
+                              return { ...d, RandomEliminationRules: next };
+                            })
+                          }
+                        />
+                        排除固定牌（ExcludeFixedCards）
+                      </label>
+                      <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
+                        <input
+                          type="checkbox"
+                          checked={!!r.ExcludeJokers}
+                          onChange={(e) =>
+                            updateData((d) => {
+                              const next = [...(d.RandomEliminationRules ?? [])];
+                              next[idx] = { ...next[idx], ExcludeJokers: e.target.checked };
+                              return { ...d, RandomEliminationRules: next };
+                            })
+                          }
+                        />
+                        排除小丑牌（ExcludeJokers）
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateData((d) => {
+                            const next = [...(d.RandomEliminationRules ?? [])];
+                            next.splice(idx, 1);
+                            return { ...d, RandomEliminationRules: next };
+                          })
+                        }
+                        style={{ marginLeft: "auto" }}
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
               <div className="panel">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1295,6 +1486,9 @@ export default function App() {
                 totalCards={current.data.TotalCards}
                 isSingleDeck={current.data.IsSingleDeck}
                 boardLayout={current.data.BoardLayout}
+                specialWild={current.data.SpecialWild}
+                specialMultiplier={current.data.SpecialMultiplier}
+                specialSuit={current.data.SpecialSuit}
                 onChange={(layout) => updateData((d) => ({ ...d, BoardLayout: layout }))}
                 onTotalCardsChange={(n) => updateData((d) => ({ ...d, TotalCards: n }))}
                 focusSlotIndex={focusSlotIndex}

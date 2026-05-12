@@ -38,6 +38,7 @@ type PreviewCard = {
   kind: "normal" | "jokerWild" | "jokerMultiplier" | "jokerSuit";
   suit: string;
   rank: number;
+  isFixed: boolean;
   removed: boolean;
 };
 
@@ -166,8 +167,21 @@ function buildInitialCards(level: LevelConfigData): PreviewCard[] {
       kind: "normal",
       suit,
       rank,
+      isFixed: s.Suit !== "N" && s.Rank >= RANK_MIN && s.Rank <= RANK_MAX,
       removed: false,
     });
+  }
+  // Apply manual special placement from BoardLayout.Special (replaces that slot's card).
+  for (let i = 0; i < layout.length && i < cards.length; i++) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sp = (layout[i] as any)?.Special as string | undefined;
+    if (!sp) continue;
+    if (sp === "Wild") cards[i] = { ...cards[i], kind: "jokerWild", suit: "N", rank: 0 };
+    else if (sp === "Multiplier") cards[i] = { ...cards[i], kind: "jokerMultiplier", suit: "N", rank: 0 };
+    else if (sp === "SuitH") cards[i] = { ...cards[i], kind: "jokerSuit", suit: "H", rank: 0 };
+    else if (sp === "SuitD") cards[i] = { ...cards[i], kind: "jokerSuit", suit: "D", rank: 0 };
+    else if (sp === "SuitC") cards[i] = { ...cards[i], kind: "jokerSuit", suit: "C", rank: 0 };
+    else if (sp === "SuitS") cards[i] = { ...cards[i], kind: "jokerSuit", suit: "S", rank: 0 };
   }
   // Replace some normals with jokers at start (deterministic).
   const candidates = cards.filter((c) => c.kind === "normal");
@@ -180,15 +194,22 @@ function buildInitialCards(level: LevelConfigData): PreviewCard[] {
     }
     return out;
   };
-  for (const c of replacePick(level.SpecialWild)) {
+  const placedWild = layout.filter((s) => (s as any)?.Special === "Wild").length;
+  const placedMult = layout.filter((s) => (s as any)?.Special === "Multiplier").length;
+  const placedSuit = layout.filter((s) => typeof (s as any)?.Special === "string" && String((s as any).Special).startsWith("Suit")).length;
+  const needWild = Math.max(0, level.SpecialWild - placedWild);
+  const needMult = Math.max(0, level.SpecialMultiplier - placedMult);
+  const needSuit = Math.max(0, level.SpecialSuit - placedSuit);
+
+  for (const c of replacePick(needWild)) {
     const idx = cards.findIndex((x) => x.id === c.id);
     if (idx >= 0) cards[idx] = { ...cards[idx], kind: "jokerWild", suit: "N", rank: 0 };
   }
-  for (const c of replacePick(level.SpecialMultiplier)) {
+  for (const c of replacePick(needMult)) {
     const idx = cards.findIndex((x) => x.id === c.id);
     if (idx >= 0) cards[idx] = { ...cards[idx], kind: "jokerMultiplier", suit: "N", rank: 0 };
   }
-  for (const c of replacePick(level.SpecialSuit)) {
+  for (const c of replacePick(needSuit)) {
     const idx = cards.findIndex((x) => x.id === c.id);
     if (idx >= 0) {
       const suit = pickRandom([...SUIT_CODES], rnd);
@@ -477,7 +498,7 @@ export function LevelPreviewPage({ level, onClose }: Props) {
     const nextCount = addWildCount + 1;
     setAddWildCount(nextCount);
     const id = `bonusWild_${nextCount}`;
-    const bonus: PreviewCard = { id, x: 0, y: 0, layer: 0, kind: "jokerWild", suit: "N", rank: 0, removed: true };
+    const bonus: PreviewCard = { id, x: 0, y: 0, layer: 0, kind: "jokerWild", suit: "N", rank: 0, isFixed: false, removed: true };
     setCards((prev) => [...prev, bonus]);
     setHandIds((h) => [...h, id]);
   }, [canUseItems, itemAddWildLeft, handIds.length, addWildCount]);
@@ -504,29 +525,66 @@ export function LevelPreviewPage({ level, onClose }: Props) {
     let after = [...nextCards];
 
     const pairStreakTrigger = evalRes.handType === "Pair" && lastHandType === "Pair";
-    if (evalRes.handType === "HighCard" || pairStreakTrigger) {
-      const rnd = makeRng((level.Seed ^ (rounds.length + 1) ^ total ^ 0x53a9) >>> 0);
+    const eliminationRules = (level.RandomEliminationRules ?? []).filter((r) => r && r.Enabled && r.RemoveCount > 0);
+    const shouldTrigger = (ruleTrigger: string): boolean => {
+      if (ruleTrigger === "OnHighCard") return evalRes.handType === "HighCard";
+      if (ruleTrigger === "OnPairStreak2") return pairStreakTrigger;
+      return false;
+    };
+    const applyElimination = (removeCount: number, ruleRange: string, layers: number[], excludeFixed: boolean, excludeJokers: boolean, salt: number) => {
+      const rnd = makeRng((level.Seed ^ (rounds.length + 1) ^ total ^ salt) >>> 0);
       const candidatesAll = after.filter((c) => !c.removed);
-      const candidates =
-        eliminateRange === "all"
-          ? candidatesAll
-          : eliminateRange === "clickable"
-            ? candidatesAll.filter((c) => clickable.has(c.id))
-            : candidatesAll.filter((c) => !clickable.has(c.id));
-      let removeN = Math.min(3, candidates.length);
+      let candidates = candidatesAll;
+      if (ruleRange === "Clickable") candidates = candidates.filter((c) => clickable.has(c.id));
+      else if (ruleRange === "Locked") candidates = candidates.filter((c) => !clickable.has(c.id));
+      else if (ruleRange === "Layers") candidates = candidates.filter((c) => layers.includes(c.layer));
+      if (excludeFixed) candidates = candidates.filter((c) => !c.isFixed);
+      if (excludeJokers) candidates = candidates.filter((c) => c.kind === "normal");
+      let removeN = Math.min(removeCount, candidates.length);
       while (removeN > 0 && candidates.length > 0) {
         const idx = Math.floor(rnd() * candidates.length);
         const c = candidates.splice(idx, 1)[0];
         after = after.map((x) => (x.id === c.id ? { ...x, removed: true } : x));
         removeN--;
       }
+    };
+
+    // Back-compat: if no rules configured, keep old behavior but use preview dropdown.
+    if (eliminationRules.length === 0) {
+      if (evalRes.handType === "HighCard" || pairStreakTrigger) {
+        const rnd = makeRng((level.Seed ^ (rounds.length + 1) ^ total ^ 0x53a9) >>> 0);
+        const candidatesAll = after.filter((c) => !c.removed);
+        const candidates =
+          eliminateRange === "all"
+            ? candidatesAll
+            : eliminateRange === "clickable"
+              ? candidatesAll.filter((c) => clickable.has(c.id))
+              : candidatesAll.filter((c) => !clickable.has(c.id));
+        let removeN = Math.min(3, candidates.length);
+        while (removeN > 0 && candidates.length > 0) {
+          const idx = Math.floor(rnd() * candidates.length);
+          const c = candidates.splice(idx, 1)[0];
+          after = after.map((x) => (x.id === c.id ? { ...x, removed: true } : x));
+          removeN--;
+        }
+      }
+    } else {
+      let applied = false;
+      for (let i = 0; i < eliminationRules.length; i++) {
+        const r = eliminationRules[i];
+        if (!shouldTrigger(r.Trigger)) continue;
+        applyElimination(r.RemoveCount, r.Range, r.Layers ?? [], !!r.ExcludeFixedCards, !!r.ExcludeJokers, 0x7000 + i * 31);
+        applied = true;
+      }
+      // If multiple rules triggered, they stack (matches "系统"预期).
+      void applied;
     }
 
     const remainAfter = after.filter((c) => !c.removed).length;
     let nextStatus: "running" | "win" | "fail" = "running";
     const nextObjCounts = { ...objectiveCounts, [evalRes.handType]: (objectiveCounts[evalRes.handType] ?? 0) + 1 };
     setObjectiveCounts(nextObjCounts);
-    const scoreMet = !needsScore || total >= level.TargetScore;
+    const scoreMet = !needsScore || (level.AllowOverScoreWin ? total >= level.TargetScore : total === level.TargetScore);
     const objMet = !needsObjectives || isObjectivesMet(nextObjCounts);
     const winMode = level.WinConditionMode;
     const win =
