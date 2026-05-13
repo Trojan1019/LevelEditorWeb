@@ -82,11 +82,12 @@ export function normalizeLevelConfig(raw: unknown): LevelConfigData | null {
   if (!Number.isFinite(id)) {
     return null;
   }
+  const boardLayout = normalizeBoardSlots(o.BoardLayout);
   return {
     Id: id,
     TitleKey: typeof o.TitleKey === "string" ? o.TitleKey : "",
     DescriptionKey: typeof o.DescriptionKey === "string" ? o.DescriptionKey : "",
-    TotalCards: coerceInt(o.TotalCards, 0),
+    TotalCards: boardLayout.length > 0 ? boardLayout.length : coerceInt(o.TotalCards, 0),
     TargetScore: coerceInt(o.TargetScore, 0),
     WinConditionMode: coerceInt(o.WinConditionMode, 0) as LevelConfigData["WinConditionMode"],
     IsSingleDeck: coerceBool(o.IsSingleDeck, true),
@@ -100,7 +101,7 @@ export function normalizeLevelConfig(raw: unknown): LevelConfigData | null {
     ItemShuffle: coerceInt(o.ItemShuffle, 0),
     ItemAddWild: coerceInt(o.ItemAddWild, 0),
     RandomEliminationRules: normalizeRandomEliminationRules(o.RandomEliminationRules),
-    BoardLayout: normalizeBoardSlots(o.BoardLayout),
+    BoardLayout: boardLayout,
     Objectives: normalizeObjectives(o.Objectives),
   };
 }

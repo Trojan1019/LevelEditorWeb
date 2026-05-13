@@ -3,6 +3,7 @@ import { computeVisibleRatios } from "../board/boardClickability";
 import { SOURCE_CARD_HEIGHT, SOURCE_CARD_WIDTH } from "../board/boardConstants";
 import { LevelWinConditionMode, RANK_MAX, RANK_MIN, SUIT_CODES } from "../domain/enums";
 import type { LevelConfigData, LevelBoardSlotData } from "../domain/levelTypes";
+import { computeLevelFingerprint, createDeterministicRngFromParts } from "../domain/levelFingerprint";
 import { createGridSlots } from "../board/boardLayoutFactory";
 
 type HandType =
@@ -55,6 +56,11 @@ interface Props {
 }
 
 type EliminateRange = "all" | "clickable" | "locked";
+
+const PREVIEW_SALT_INITIAL = "LevelEditorWeb.preview.initialDeal.v1";
+const PREVIEW_SALT_SHUFFLE = "LevelEditorWeb.preview.shuffle.v1";
+const PREVIEW_SALT_ELIM_RULE = "LevelEditorWeb.preview.eliminateRule.v1";
+const PREVIEW_SALT_ELIM_LEGACY = "LevelEditorWeb.preview.eliminateLegacy.v1";
 
 function rankLabel(rank: number): string {
   if (rank <= 10) {
@@ -109,23 +115,14 @@ function buildDeck(level: LevelConfigData): Array<{ suit: string; rank: number }
   return deck;
 }
 
-function makeRng(seed: number): () => number {
-  let a = (seed >>> 0) || 0x9e3779b9;
-  return () => {
-    let t = (a += 0x6d2b79f5) >>> 0;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 function pickRandom<T>(arr: T[], rnd: () => number): T {
   const i = Math.floor(rnd() * arr.length);
   return arr[Math.max(0, Math.min(arr.length - 1, i))];
 }
 
 function buildInitialCards(level: LevelConfigData): PreviewCard[] {
-  const rnd = makeRng(level.Seed);
+  const fp = computeLevelFingerprint(level);
+  const rnd = createDeterministicRngFromParts(level.Seed, fp, PREVIEW_SALT_INITIAL);
   const layout = level.BoardLayout.length > 0 ? level.BoardLayout : createGridSlots(level.TotalCards);
   const deck = buildDeck(level);
   const fixedUsed = new Set<string>();
@@ -392,10 +389,11 @@ function computeBounds(cards: PreviewCard[]): { minX: number; maxX: number; minY
   let minY = Infinity;
   let maxY = -Infinity;
   for (const c of cards) {
+    const viewY = -c.y;
     minX = Math.min(minX, c.x - hw);
     maxX = Math.max(maxX, c.x + hw);
-    minY = Math.min(minY, c.y - hh);
-    maxY = Math.max(maxY, c.y + hh);
+    minY = Math.min(minY, viewY - hh);
+    maxY = Math.max(maxY, viewY + hh);
   }
   const pad = 40;
   return { minX: minX - pad, maxX: maxX + pad, minY: minY - pad, maxY: maxY + pad };
@@ -490,7 +488,8 @@ export function LevelPreviewPage({ level, onClose }: Props) {
     setItemShuffleLeft((n) => Math.max(0, n - 1));
     const nextCount = shuffleCount + 1;
     setShuffleCount(nextCount);
-    const rnd = makeRng((level.Seed ^ 0x5147_2026 ^ nextCount) >>> 0);
+    const fp = computeLevelFingerprint(level);
+    const rnd = createDeterministicRngFromParts(level.Seed, fp, PREVIEW_SALT_SHUFFLE, [nextCount]);
     const remain = cards.filter((c) => !c.removed);
     const positions = remain.map((c) => ({ x: c.x, y: c.y, layer: c.layer }));
     for (let i = positions.length - 1; i > 0; i--) {
@@ -502,7 +501,7 @@ export function LevelPreviewPage({ level, onClose }: Props) {
     const updatedRemain = remain.map((c, i) => ({ ...c, x: positions[i].x, y: positions[i].y, layer: positions[i].layer }));
     const remainById = new Map(updatedRemain.map((c) => [c.id, c]));
     setCards((prev) => prev.map((c) => remainById.get(c.id) ?? c));
-  }, [canUseItems, itemShuffleLeft, level.Seed, shuffleCount, cards]);
+  }, [canUseItems, itemShuffleLeft, level, shuffleCount, cards]);
 
   const onUseAddWild = useCallback(() => {
     if (!canUseItems) return;
@@ -546,7 +545,8 @@ export function LevelPreviewPage({ level, onClose }: Props) {
       return false;
     };
     const applyElimination = (removeCount: number, ruleRange: string, layers: number[], excludeFixed: boolean, excludeJokers: boolean, salt: number) => {
-      const rnd = makeRng((level.Seed ^ (rounds.length + 1) ^ total ^ salt) >>> 0);
+      const fp = computeLevelFingerprint(level);
+      const rnd = createDeterministicRngFromParts(level.Seed, fp, PREVIEW_SALT_ELIM_RULE, [rounds.length + 1, total, salt]);
       const candidatesAll = after.filter((c) => !c.removed);
       let candidates = candidatesAll;
       if (ruleRange === "Clickable") candidates = candidates.filter((c) => clickable.has(c.id));
@@ -566,7 +566,8 @@ export function LevelPreviewPage({ level, onClose }: Props) {
     // Back-compat: if no rules configured, keep old behavior but use preview dropdown.
     if (eliminationRules.length === 0) {
       if (evalRes.handType === "HighCard" || pairStreakTrigger) {
-        const rnd = makeRng((level.Seed ^ (rounds.length + 1) ^ total ^ 0x53a9) >>> 0);
+        const fp = computeLevelFingerprint(level);
+        const rnd = createDeterministicRngFromParts(level.Seed, fp, PREVIEW_SALT_ELIM_LEGACY, [rounds.length + 1, total, 0x53a9]);
         const candidatesAll = after.filter((c) => !c.removed);
         const candidates =
           eliminateRange === "all"
@@ -734,8 +735,9 @@ export function LevelPreviewPage({ level, onClose }: Props) {
           <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", background: "#0a0d12", height: "100%" }}>
             <svg width="100%" height="100%" viewBox={vb}>
               {activeCardsForDraw.map((c) => {
+                const viewY = -c.y;
                 const rx = c.x - SOURCE_CARD_WIDTH / 2;
-                const ry = c.y - SOURCE_CARD_HEIGHT / 2;
+                const ry = viewY - SOURCE_CARD_HEIGHT / 2;
                 const can = clickable.has(c.id);
                 const href = cardSpriteHref(c);
                 return (

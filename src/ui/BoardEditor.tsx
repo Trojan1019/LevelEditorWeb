@@ -56,11 +56,12 @@ function saveSnap(key: string, value: number): void {
 function layoutBounds(slots: LevelBoardSlotData[]): { minX: number; maxX: number; minY: number; maxY: number } {
   if (slots.length === 0) {
     const pad = 80;
+    const viewOriginY = -SNAP_ORIGIN_Y;
     return {
       minX: -80,
       maxX: 80,
-      minY: SNAP_ORIGIN_Y - pad,
-      maxY: SNAP_ORIGIN_Y + pad,
+      minY: viewOriginY - pad,
+      maxY: viewOriginY + pad,
     };
   }
   let minX = Infinity;
@@ -70,10 +71,11 @@ function layoutBounds(slots: LevelBoardSlotData[]): { minX: number; maxX: number
   const hw = SOURCE_CARD_WIDTH / 2;
   const hh = SOURCE_CARD_HEIGHT / 2;
   for (const s of slots) {
+    const viewY = -s.Y;
     minX = Math.min(minX, s.X - hw);
     maxX = Math.max(maxX, s.X + hw);
-    minY = Math.min(minY, s.Y - hh);
-    maxY = Math.max(maxY, s.Y + hh);
+    minY = Math.min(minY, viewY - hh);
+    maxY = Math.max(maxY, viewY + hh);
   }
   const pad = 40;
   return { minX: minX - pad, maxX: maxX + pad, minY: minY - pad, maxY: maxY + pad };
@@ -393,8 +395,9 @@ export function BoardEditor({
     const p1 = new DOMPoint(e.clientX, e.clientY).matrixTransform(inv);
     const dx = p1.x - p0.x;
     const dy = p1.y - p0.y;
+    const unityDy = -dy;
     const nx = snapToInt(d.startX + dx, snapX, SNAP_ORIGIN_X);
-    const ny = snapToInt(d.startY + dy, snapY, SNAP_ORIGIN_Y);
+    const ny = snapToInt(d.startY + unityDy, snapY, SNAP_ORIGIN_Y);
     updateSlot(d.index, { X: nx, Y: ny });
   };
 
@@ -404,6 +407,7 @@ export function BoardEditor({
 
   const selectedSlot = selected >= 0 && selected < boardLayout.length ? boardLayout[selected] : null;
   const pickerSlot = pickerIndex >= 0 && pickerIndex < boardLayout.length ? boardLayout[pickerIndex] : null;
+  const viewOriginY = -SNAP_ORIGIN_Y;
 
   return (
     <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -550,6 +554,26 @@ export function BoardEditor({
           }}
         >
           全部吸附
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onChange(boardLayout.map((s) => ({ ...s, Y: 2 * SNAP_ORIGIN_Y - s.Y })));
+          }}
+          disabled={boardLayout.length === 0}
+          title={`以数据 Y = ${SNAP_ORIGIN_Y} 为 X 轴基准，翻转所有槽位的 Y`}
+        >
+          关于 X 轴镜像
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onChange(boardLayout.map((s) => ({ ...s, X: 2 * SNAP_ORIGIN_X - s.X })));
+          }}
+          disabled={boardLayout.length === 0}
+          title={`以数据 X = ${SNAP_ORIGIN_X} 为 Y 轴基准，翻转所有槽位的 X`}
+        >
+          关于 Y 轴镜像
         </button>
         <button type="button" onClick={() => onChange([])}>
           清空布局
@@ -698,7 +722,7 @@ export function BoardEditor({
           onPointerLeave={onPointerUp}
         >
           <defs>
-            <pattern id="grid" width={snapX} height={snapY} patternUnits="userSpaceOnUse" x={SNAP_ORIGIN_X} y={SNAP_ORIGIN_Y}>
+            <pattern id="grid" width={snapX} height={snapY} patternUnits="userSpaceOnUse" x={SNAP_ORIGIN_X} y={viewOriginY}>
               <path
                 d={`M ${snapX} 0 L 0 0 0 ${snapY}`}
                 fill="none"
@@ -710,16 +734,16 @@ export function BoardEditor({
           <rect x={vb.x} y={vb.y} width={vb.w} height={vb.h} fill="url(#grid)" />
           <line
             x1={vb.x}
-            y1={SNAP_ORIGIN_Y}
+            y1={viewOriginY}
             x2={vb.x + vb.w}
-            y2={SNAP_ORIGIN_Y}
+            y2={viewOriginY}
             stroke="var(--accent)"
             strokeWidth={1.5}
             strokeDasharray="6 4"
           />
           <text
             x={vb.x + 6}
-            y={SNAP_ORIGIN_Y - 4}
+            y={viewOriginY - 4}
             fill="var(--muted)"
             fontSize={10}
             style={{ pointerEvents: "none" }}
@@ -738,8 +762,9 @@ export function BoardEditor({
             const s = boardLayout[i];
             const w = SOURCE_CARD_WIDTH;
             const h = SOURCE_CARD_HEIGHT;
+            const viewY = -s.Y;
             const rx = s.X - w / 2;
-            const ry = s.Y - h / 2;
+            const ry = viewY - h / 2;
             const clickable = clickInfo ? clickInfo[i]?.clickable : true;
             const ratio = clickInfo ? clickInfo[i]?.ratio : 1;
             const isSel = i === selected;
@@ -941,7 +966,7 @@ VisibleRatio: ${(ratio * 100).toFixed(0)}%`}
       ) : null}
       <div style={{ color: "var(--muted)", fontSize: 11 }}>
         单击或拖拽移动槽位；双击槽位选择固定牌面，N/0 表示不固定。遮挡可点预览基于当前槽位直接计算（可见比例 ≥ 70%）。
-        坐标与数据一致：预览为浏览器 SVG 惯例，<strong>Y 轴向下为正</strong>（数值越大越靠画面下方）；青色虚线为数据 Y = {SNAP_ORIGIN_Y} 的基准行。若运行时世界坐标 Y 向上，请在客户端对 BoardLayout.Y 做符号换算。
+        JSON 中 BoardLayout.Y 为 Unity 坐标：预览显示时会转换为浏览器坐标，<strong>Unity Y 越小越靠画面下方</strong>；青色虚线为数据 Y = {SNAP_ORIGIN_Y} 的基准行。
       </div>
     </div>
   );

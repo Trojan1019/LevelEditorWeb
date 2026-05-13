@@ -25,6 +25,7 @@ import { PoolStatsPanel } from "./ui/PoolStatsPanel";
 import { HandTypeUpperBoundsPanel } from "./ui/HandTypeUpperBoundsPanel";
 import { buildMultisetFromBoardLayout, buildPoolMultiset, computeHandTypeUpperBounds } from "./domain/poolStats";
 import { LevelPreviewPage } from "./ui/LevelPreviewPage";
+import { computeLevelFingerprint } from "./domain/levelFingerprint";
 import {
   generateUniqueLevelSeed,
   randomizeBoardLayoutSlotRanks,
@@ -119,6 +120,9 @@ function cacheKeyForFile(fileName: string): string {
 }
 
 const SESSION_FILES_KEY = "joker.levelEditor.sessionFiles.v1";
+const DIRECTORY_HANDLE_DB = "joker.levelEditor.directoryHandle.v1";
+const DIRECTORY_HANDLE_STORE = "handles";
+const DIRECTORY_HANDLE_KEY = "lastLevelDirectory";
 
 function tryLoadCachedLevel(fileName: string): LevelConfigData | null {
   try {
@@ -143,6 +147,17 @@ function trySaveCachedLevel(fileName: string, data: LevelConfigData): void {
 function tryClearCachedLevel(fileName: string): void {
   try {
     localStorage.removeItem(cacheKeyForFile(fileName));
+  } catch {
+    // ignore
+  }
+}
+
+function tryClearAllLevelCaches(files: LoadedLevelFile[]): void {
+  try {
+    localStorage.removeItem(SESSION_FILES_KEY);
+    for (const f of files) {
+      localStorage.removeItem(cacheKeyForFile(f.fileName));
+    }
   } catch {
     // ignore
   }
@@ -209,6 +224,55 @@ function trySaveSessionFiles(files: LoadedLevelFile[]): void {
   }
 }
 
+function openDirectoryHandleDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DIRECTORY_HANDLE_DB, 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(DIRECTORY_HANDLE_STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error("打开目录缓存失败"));
+  });
+}
+
+async function saveLastDirectoryHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+  const db = await openDirectoryHandleDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(DIRECTORY_HANDLE_STORE, "readwrite");
+    tx.objectStore(DIRECTORY_HANDLE_STORE).put(handle, DIRECTORY_HANDLE_KEY);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("保存目录缓存失败"));
+  });
+  db.close();
+}
+
+async function loadLastDirectoryHandle(): Promise<FileSystemDirectoryHandle | null> {
+  const db = await openDirectoryHandleDb();
+  const handle = await new Promise<FileSystemDirectoryHandle | null>((resolve, reject) => {
+    const tx = db.transaction(DIRECTORY_HANDLE_STORE, "readonly");
+    const req = tx.objectStore(DIRECTORY_HANDLE_STORE).get(DIRECTORY_HANDLE_KEY);
+    req.onsuccess = () => resolve((req.result as FileSystemDirectoryHandle | undefined) ?? null);
+    req.onerror = () => reject(req.error ?? new Error("读取目录缓存失败"));
+  });
+  db.close();
+  return handle;
+}
+
+async function ensureDirectoryPermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
+  const h = handle as unknown as {
+    queryPermission?: (options?: { mode?: "read" | "readwrite" }) => Promise<PermissionState>;
+    requestPermission?: (options?: { mode?: "read" | "readwrite" }) => Promise<PermissionState>;
+  };
+  if (!h.queryPermission || !h.requestPermission) {
+    return true;
+  }
+  const options = { mode: "readwrite" as const };
+  if ((await h.queryPermission(options)) === "granted") {
+    return true;
+  }
+  return (await h.requestPermission(options)) === "granted";
+}
+
 export default function App() {
   const fsSupported = hasFsAccess();
   const browserName = browserHintName();
@@ -243,7 +307,7 @@ export default function App() {
     () =>
       files.map((f) => ({
         fileName: f.fileName,
-        levelId: parseLevelIdFromFileName(f.fileName),
+        levelId: f.data.Id,
       })),
     [files],
   );
@@ -377,6 +441,59 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const loadDirectory = useCallback(async (handle: FileSystemDirectoryHandle, sourceLabel: string, options?: { useCachedDrafts?: boolean }) => {
+    const useCachedDrafts = options?.useCachedDrafts ?? true;
+    setDirHandle(handle);
+    const loadedRaw = await loadLevelsFromDirectory(handle);
+    const loaded = loadedRaw.map((f) => {
+      const diskJson = f.baselineJson;
+      const cached = useCachedDrafts ? tryLoadCachedLevel(f.fileName) : null;
+      if (!cached) {
+        return f;
+      }
+      return {
+        ...f,
+        data: cached,
+        baselineJson: diskJson,
+      };
+    });
+    setFiles(loaded);
+    setSelectedIndex(loaded.length > 0 ? 0 : 0);
+    setStatus(`${sourceLabel}，已加载 ${loaded.length} 个关卡文件`);
+  }, []);
+
+  useEffect(() => {
+    if (!fsSupported) {
+      return;
+    }
+    let cancelled = false;
+    const restoreDirectory = async () => {
+      try {
+        const handle = await loadLastDirectoryHandle();
+        if (!handle || cancelled) {
+          return;
+        }
+        const ok = await ensureDirectoryPermission(handle);
+        if (cancelled) {
+          return;
+        }
+        if (!ok) {
+          setStatus("已找到上次目录，但浏览器未授予写入权限；请点击「选择关卡目录」重新授权。");
+          return;
+        }
+        await loadDirectory(handle, "已恢复上次选择的目录");
+      } catch (e) {
+        if (!cancelled) {
+          setStatus(`恢复上次目录失败：${(e as Error).message}`);
+        }
+      }
+    };
+    void restoreDirectory();
+    return () => {
+      cancelled = true;
+    };
+  }, [fsSupported, loadDirectory]);
+
   // Local cache (draft) — keeps unsaved edits after refresh/reopen.
   useEffect(() => {
     trySaveSessionFiles(files);
@@ -481,23 +598,9 @@ export default function App() {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const handle = await (window as any).showDirectoryPicker({ mode: "readwrite" });
-      setDirHandle(handle);
-      const loadedRaw = await loadLevelsFromDirectory(handle);
-      const loaded = loadedRaw.map((f) => {
-        const diskJson = f.baselineJson;
-        const cached = tryLoadCachedLevel(f.fileName);
-        if (!cached) {
-          return f;
-        }
-        return {
-          ...f,
-          data: cached,
-          baselineJson: diskJson,
-        };
-      });
-      setFiles(loaded);
-      setSelectedIndex(loaded.length > 0 ? 0 : 0);
-      setStatus(`已加载 ${loaded.length} 个关卡文件`);
+      tryClearAllLevelCaches(files);
+      await saveLastDirectoryHandle(handle);
+      await loadDirectory(handle, "已连接并记住关卡目录，已清理旧关卡缓存", { useCachedDrafts: false });
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
         setStatus(`打开目录失败：${(e as Error).message}`);
@@ -508,10 +611,6 @@ export default function App() {
   const saveCurrent = async () => {
     if (!dirHandle || !current) {
       setStatus("请先选择工程目录（Assets/Game/Level）。");
-      return;
-    }
-    if (!current.fileHandle) {
-      setStatus("当前关卡是从本地会话缓存恢复的：请先重新选择目录以获取写入权限与文件句柄。");
       return;
     }
     const errs = validateLevel(current.data, summaries).filter((m) => m.severity === "error");
@@ -557,6 +656,67 @@ export default function App() {
       }
     } catch (e) {
       setStatus(`保存失败：${(e as Error).message}`);
+    }
+  };
+
+  const saveAll = async () => {
+    if (!dirHandle) {
+      setStatus("请先选择工程目录（Assets/Game/Level）。");
+      return;
+    }
+    if (!files.length) {
+      setStatus("当前没有可保存的关卡。");
+      return;
+    }
+    const invalid = files
+      .map((f) => ({
+        fileName: f.fileName,
+        errors: validateLevel(f.data, summaries).filter((m) => m.severity === "error"),
+      }))
+      .filter((x) => x.errors.length > 0);
+    if (invalid.length > 0) {
+      setStatus(`存在校验错误，未保存：${invalid.map((x) => x.fileName).join(", ")}`);
+      return;
+    }
+    const renames = files
+      .filter((f) => parseLevelIdFromFileName(f.fileName) !== f.data.Id)
+      .map((f) => `${f.fileName} → ${levelFileNameForId(f.data.Id)}`);
+    if (renames.length > 0) {
+      const ok = window.confirm(`保存全部会重命名以下文件，并删除旧文件（若存在）：\n${renames.join("\n")}\n继续？`);
+      if (!ok) {
+        return;
+      }
+    }
+    try {
+      const saved: LoadedLevelFile[] = [];
+      for (const entry of files) {
+        const prevName = entry.fileName;
+        const { fileName, fileHandle } = await persistLevel(dirHandle, entry, prevName);
+        saved.push({
+          ...entry,
+          fileName,
+          fileHandle,
+          baselineJson: serializeLevelJson(entry.data),
+        });
+        tryClearCachedLevel(fileName);
+        if (fileName !== prevName) {
+          tryClearCachedLevel(prevName);
+          const oldKey = historyKeyOf(prevName);
+          const newKey = historyKeyOf(fileName);
+          if (editHistoryRef.current[oldKey]) {
+            editHistoryRef.current[newKey] = editHistoryRef.current[oldKey];
+            delete editHistoryRef.current[oldKey];
+          }
+        }
+      }
+      saved.sort((a, b) => parseLevelIdFromFileName(a.fileName) - parseLevelIdFromFileName(b.fileName));
+      const selectedFileName = current ? levelFileNameForId(current.data.Id) : "";
+      const nextSelectedIndex = Math.max(0, saved.findIndex((f) => f.fileName === selectedFileName));
+      setFiles(saved);
+      setSelectedIndex(nextSelectedIndex);
+      setStatus(`已保存全部 ${saved.length} 个关卡`);
+    } catch (e) {
+      setStatus(`保存全部失败：${(e as Error).message}`);
     }
   };
 
@@ -740,6 +900,9 @@ export default function App() {
           title={current && isLevelDirty(current) ? "将当前关卡写入已选目录" : undefined}
         >
           {current && isLevelDirty(current) ? "保存到磁盘" : "保存当前"}
+        </button>
+        <button type="button" onClick={() => void saveAll()} disabled={!files.length}>
+          保存全部
         </button>
         {current && isLevelDirty(current) ? (
           <span style={{ color: "var(--warn)", fontSize: 12 }}>未保存</span>
@@ -1026,7 +1189,8 @@ export default function App() {
                         return;
                       }
                       const seed = generateUniqueLevelSeed();
-                      const res = randomizeBoardLayoutSlotSuits(seed, current.data.BoardLayout, current.data.PoolSuits);
+                      const fp = computeLevelFingerprint(current.data);
+                      const res = randomizeBoardLayoutSlotSuits(seed, fp, current.data.BoardLayout, current.data.PoolSuits);
                       if (!res.ok) {
                         setStatus(res.message);
                         return;
@@ -1061,8 +1225,10 @@ export default function App() {
                         return;
                       }
                       const seed = generateUniqueLevelSeed();
+                      const fp = computeLevelFingerprint(current.data);
                       const res = randomizeBoardLayoutSlotSuitsAndRanks(
                         seed,
+                        fp,
                         current.data.BoardLayout,
                         current.data.PoolSuits,
                         current.data.PoolRanks,
@@ -1097,7 +1263,8 @@ export default function App() {
                         return;
                       }
                       const seed = generateUniqueLevelSeed();
-                      const res = randomizeBoardLayoutSlotRanks(seed, current.data.BoardLayout, current.data.PoolRanks);
+                      const fp = computeLevelFingerprint(current.data);
+                      const res = randomizeBoardLayoutSlotRanks(seed, fp, current.data.BoardLayout, current.data.PoolRanks);
                       if (!res.ok) {
                         setStatus(res.message);
                         return;
@@ -1568,7 +1735,7 @@ export default function App() {
               <strong>7) 特殊牌与总牌数：</strong>特殊牌总数不能超过总牌数；特殊牌和道具初始次数都不能为负数。
             </div>
             <div>
-              <strong>8) 自定义布局生效条件：</strong>当“槽位数量 = 总牌数”时，自定义布局才会完整生效；数量不一致会提示，并可能回退为自动布局。
+              <strong>8) 总牌数规则：</strong>总牌数跟随棋盘槽位数量；导入 JSON 时如果已有 BoardLayout，会自动把 TotalCards 设为槽位数。
             </div>
             <div>
               <strong>9) 层级（叠放）逻辑：</strong>先比“层级”，数值越大越在上层；同层时，列表里更靠后的槽位会压在更上面（更容易遮挡下面的牌）。

@@ -1,4 +1,5 @@
 import { RANK_MAX, RANK_MIN, SUIT_CODES } from "./enums";
+import { mixEffectiveSeed } from "./levelFingerprint";
 import type { LevelBoardSlotData } from "./levelTypes";
 
 /**
@@ -13,15 +14,6 @@ export type BoardRandomResult =
   | { ok: true; layout: LevelBoardSlotData[] }
   | { ok: false; message: string };
 
-function fnv1a32(salt: string, seed: number): number {
-  let h = 2166136261 ^ (seed >>> 0);
-  for (let i = 0; i < salt.length; i++) {
-    h ^= salt.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -32,8 +24,8 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-function createRng(seed: number, salt: string): () => number {
-  return mulberry32(fnv1a32(salt, seed));
+function createRng(seed: number, levelFingerprint: number, salt: string): () => number {
+  return mulberry32(mixEffectiveSeed(seed, levelFingerprint, salt));
 }
 
 function pickIndex(rnd: () => number, len: number): number {
@@ -87,6 +79,7 @@ export function buildCartesianDeck(
  */
 export function randomizeBoardLayoutSlotSuitsAndRanks(
   seed: number,
+  levelFingerprint: number,
   layout: LevelBoardSlotData[],
   poolSuits: readonly string[],
   poolRanks: readonly number[],
@@ -104,7 +97,7 @@ export function randomizeBoardLayoutSlotSuitsAndRanks(
       message: `槽位数（${layout.length}）超过不重复可用牌数（${deck.length}）。请减少槽位或扩大花色/点数池（全池最多 52 张）。`,
     };
   }
-  const rnd = createRng(seed, SALT_BOARD_BOTH_DECK);
+  const rnd = createRng(seed, levelFingerprint, SALT_BOARD_BOTH_DECK);
   const pile = [...deck];
   shuffleInPlace(pile, rnd);
   const next = layout.map((slot, i) => ({
@@ -121,6 +114,7 @@ export function randomizeBoardLayoutSlotSuitsAndRanks(
  */
 export function randomizeBoardLayoutSlotSuits(
   seed: number,
+  levelFingerprint: number,
   layout: LevelBoardSlotData[],
   poolSuits: readonly string[],
 ): BoardRandomResult {
@@ -131,7 +125,7 @@ export function randomizeBoardLayoutSlotSuits(
   if (suits.length === 0) {
     return { ok: false, message: "花色池为空。" };
   }
-  const rnd = createRng(seed, SALT_BOARD_SLOT_SUITS);
+  const rnd = createRng(seed, levelFingerprint, SALT_BOARD_SLOT_SUITS);
   const order = shuffleIndices(layout.length, rnd);
   const used = new Set<string>();
   const next = layout.map((s) => ({ ...s }));
@@ -166,6 +160,7 @@ export function randomizeBoardLayoutSlotSuits(
  */
 export function randomizeBoardLayoutSlotRanks(
   seed: number,
+  levelFingerprint: number,
   layout: LevelBoardSlotData[],
   poolRanks: readonly number[],
 ): BoardRandomResult {
@@ -176,7 +171,7 @@ export function randomizeBoardLayoutSlotRanks(
   if (ranks.length === 0) {
     return { ok: false, message: "点数池为空。" };
   }
-  const rnd = createRng(seed, SALT_BOARD_SLOT_RANKS);
+  const rnd = createRng(seed, levelFingerprint, SALT_BOARD_SLOT_RANKS);
   const order = shuffleIndices(layout.length, rnd);
   const used = new Set<string>();
   const next = layout.map((s) => ({ ...s }));
