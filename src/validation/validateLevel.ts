@@ -1,6 +1,7 @@
 import { BOARD_SUIT_CODES, LevelWinConditionMode, RANK_MAX, RANK_MIN, SUIT_CODES, isValidHandType } from "../domain/enums";
 import { buildMultisetFromBoardLayout, buildPoolMultiset, objectiveReachabilityMessages } from "../domain/poolStats";
 import type { LevelConfigData, LevelFileSummary } from "../domain/levelTypes";
+import { validateBoardSafety } from "../board/boardSafety";
 
 export type ValidationSeverity = "error" | "warning" | "info";
 
@@ -121,13 +122,9 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
       } else if (slot.Suit !== "N" && (slot.Rank < RANK_MIN || slot.Rank > RANK_MAX)) {
         messages.push({ severity: "error", message: `BoardLayout[${i}] 固定牌 Rank 必须在 2 到 14(A) 之间。` });
       }
-      if (Math.abs(slot.X) > 300 || Math.abs(slot.Y) > 300) {
-        messages.push({
-          severity: "warning",
-          message: `BoardLayout[${i}] 坐标偏离中心较远，请确认是否仍在棋盘可视区域内。`,
-        });
-      }
     }
+
+    messages.push(...validateBoardSafety(layout));
 
     const keyCounts = new Map<string, number>();
     const fixedCardCounts = new Map<string, number>();

@@ -107,3 +107,6 @@ label.field > span:first-child {
 .layout-status.warn {
   color: var(--warn);
 }
+.layout-status.error {
+  color: var(--error);
+}

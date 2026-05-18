@@ -9,6 +9,7 @@ import {
   SOURCE_CARD_WIDTH,
 } from "../board/boardConstants";
 import { createGridSlots, snapToInt, sortSlotsByLayer } from "../board/boardLayoutFactory";
+import { getBoardSafetyState, type SourcePoint } from "../board/boardSafety";
 import type { LevelBoardSlotData } from "../domain/levelTypes";
 import { BOARD_SUIT_CODES, RANK_MAX, RANK_MIN, type BoardSuitCode } from "../domain/enums";
 
@@ -79,6 +80,26 @@ function layoutBounds(slots: LevelBoardSlotData[]): { minX: number; maxX: number
   }
   const pad = 40;
   return { minX: minX - pad, maxX: maxX + pad, minY: minY - pad, maxY: maxY + pad };
+}
+
+function expandBoundsWithSourcePoints(
+  bounds: { minX: number; maxX: number; minY: number; maxY: number },
+  points: SourcePoint[],
+): { minX: number; maxX: number; minY: number; maxY: number } {
+  let next = { ...bounds };
+  for (const point of points) {
+    next = {
+      minX: Math.min(next.minX, point.x),
+      maxX: Math.max(next.maxX, point.x),
+      minY: Math.min(next.minY, -point.y),
+      maxY: Math.max(next.maxY, -point.y),
+    };
+  }
+  return next;
+}
+
+function sourcePolygonPoints(points: SourcePoint[]): string {
+  return points.map((point) => `${point.x},${-point.y}`).join(" ");
 }
 
 function rankLabel(rank: number): string {
@@ -192,6 +213,8 @@ export function BoardEditor({
     return computeVisibleRatios(boardLayout);
   }, [boardLayout]);
 
+  const safetyState = useMemo(() => getBoardSafetyState(boardLayout), [boardLayout]);
+
   const placedSpecialCounts = useMemo(() => {
     let wild = 0;
     let mult = 0;
@@ -293,11 +316,13 @@ export function BoardEditor({
   );
 
   const vb = useMemo(() => {
-    const b = layoutBounds(boardLayout);
+    let b = layoutBounds(boardLayout);
+    b = expandBoundsWithSourcePoints(b, safetyState.hardAreaSource);
+    b = expandBoundsWithSourcePoints(b, safetyState.softAreaSource);
     const w = b.maxX - b.minX;
     const h = b.maxY - b.minY;
     return { x: b.minX, y: b.minY, w: Math.max(w, 120), h: Math.max(h, 120) };
-  }, [boardLayout]);
+  }, [boardLayout, safetyState]);
 
   const updateSlot = useCallback(
     (i: number, patch: Partial<LevelBoardSlotData>) => {
@@ -414,6 +439,15 @@ export function BoardEditor({
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <span className={`layout-status ${layoutStatus.cls}`}>{layoutStatus.text}</span>
         {hasFixedBoardCards ? <span className="layout-status ok">固定牌面模式</span> : null}
+        {boardLayout.length > 0 ? (
+          <span className={`layout-status ${safetyState.hasHardViolations ? "error" : safetyState.hasSoftWarnings ? "warn" : "ok"}`}>
+            {safetyState.hasHardViolations
+              ? "安全区越界"
+              : safetyState.hasSoftWarnings
+                ? "靠近安全边界"
+                : `安全区通过 FitScale ${safetyState.projection.fitScale.toFixed(2)}`}
+          </span>
+        ) : null}
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
@@ -758,6 +792,23 @@ export function BoardEditor({
             stroke="#2a3344"
             strokeWidth={1}
           />
+          <polygon
+            points={sourcePolygonPoints(safetyState.hardAreaSource)}
+            fill="rgba(255, 107, 107, 0.07)"
+            stroke="#ff6b6b"
+            strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="none"
+          />
+          <polygon
+            points={sourcePolygonPoints(safetyState.softAreaSource)}
+            fill="rgba(107, 207, 255, 0.05)"
+            stroke="#6bcfff"
+            strokeWidth={1.5}
+            strokeDasharray="6 4"
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="none"
+          />
           {displayedIndices.map((i) => {
             const s = boardLayout[i];
             const w = SOURCE_CARD_WIDTH;
@@ -769,6 +820,9 @@ export function BoardEditor({
             const ratio = clickInfo ? clickInfo[i]?.ratio : 1;
             const isSel = i === selected;
             const spriteHref = s.Special ? specialSpriteHref(s.Special) : cardSpriteHref(s);
+            const safety = safetyState.slotStates[i];
+            const safetyStroke =
+              safety && !safety.hardInside ? "var(--error)" : safety && !safety.softInside ? "var(--info)" : clickable ? "#5a6a88" : "#444";
             return (
               <g
                 key={i}
@@ -803,7 +857,7 @@ VisibleRatio: ${(ratio * 100).toFixed(0)}%`}
                   height={h}
                   rx={4}
                   fill={isSel ? "#4b6fb8" : "#50648c"}
-                  stroke={isSel ? "var(--accent)" : clickable ? "#5a6a88" : "#444"}
+                  stroke={isSel ? "var(--accent)" : safetyStroke}
                   strokeWidth={isSel ? 2 : 1}
                 />
                 {spriteHref ? (
