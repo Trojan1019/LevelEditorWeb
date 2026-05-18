@@ -12,8 +12,13 @@ export interface LoadedLevelFile {
 
 const LEVEL_GLOB = /^level_\d+\.json$/i;
 
+function toUnityLevelJsonData(data: LevelConfigData): Omit<LevelConfigData, "BOARD_SAFE_AREA"> {
+  const { BOARD_SAFE_AREA: _boardSafeArea, ...unityLevelData } = data;
+  return unityLevelData;
+}
+
 export function serializeLevelJson(data: LevelConfigData): string {
-  return JSON.stringify(data, null, 2);
+  return JSON.stringify(toUnityLevelJsonData(data), null, 2);
 }
 
 export function isLevelDirty(row: LoadedLevelFile): boolean {

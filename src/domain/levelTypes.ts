@@ -40,12 +40,12 @@ export interface BoardSafeAreaConfig {
   SoftInset: number;
 }
 
-/** Mirrors Unity GameplaySceneController / LevelBoardLayoutEditor runtime board half bounds. */
+/** Mirrors Unity BoardLayoutSafetyConfig.asset defaults. */
 export const DEFAULT_BOARD_SAFE_AREA: BoardSafeAreaConfig = {
-  Left: -6.2,
-  Right: 6.2,
-  Top: 6.0,
-  Bottom: -6.0,
+  Left: -4.2,
+  Right: 4.2,
+  Top: 3.8,
+  Bottom: -3.8,
   SoftInset: 0.4,
 };
 

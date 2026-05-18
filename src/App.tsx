@@ -515,8 +515,8 @@ export default function App() {
         const row = next[selectedIndex];
         const prevData = cloneLevel(row.data);
         const nextData = updater(cloneLevel(row.data));
-        const before = serializeLevelJson(prevData);
-        const after = serializeLevelJson(nextData);
+        const before = JSON.stringify(prevData);
+        const after = JSON.stringify(nextData);
         if (before === after) {
           return prev;
         }
