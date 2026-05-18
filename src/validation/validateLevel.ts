@@ -105,13 +105,6 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
 
   const layout = level.BoardLayout ?? [];
   if (layout.length > 0) {
-    if (layout.length !== level.TotalCards) {
-      messages.push({
-        severity: "warning",
-        message: "BoardLayout 槽位数量与 TotalCards 不一致，运行时会回退到旧的自动布局。",
-      });
-    }
-
     for (let i = 0; i < layout.length; i++) {
       const slot = layout[i];
       if (!slot) {

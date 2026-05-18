@@ -1,4 +1,3 @@
-import { parseLevelIdFromFileName } from "../domain/levelTypes";
 import type { LoadedLevelFile } from "../storage/fsLevelStorage";
 import type { ValidationMessage } from "../validation/validateLevel";
 import { validateLevel } from "../validation/validateLevel";
@@ -22,7 +21,7 @@ function summarizeFile(f: LoadedLevelFile, allSummaries: { fileName: string; lev
 export function LevelList({ files, selectedIndex, onSelect, search, onSearchChange, filter, onFilterChange }: Props) {
   const summaries = files.map((f) => ({
     fileName: f.fileName,
-    levelId: parseLevelIdFromFileName(f.fileName),
+    levelId: f.data.Id,
   }));
 
   const q = search.trim().toLowerCase();
@@ -41,7 +40,6 @@ export function LevelList({ files, selectedIndex, onSelect, search, onSearchChan
     .filter(({ f, msgs }) => {
       const errCount = msgs.filter((m) => m.severity === "error").length;
       const warnCount = msgs.filter((m) => m.severity === "warning").length;
-      const layoutOk = f.data.BoardLayout.length === f.data.TotalCards && f.data.BoardLayout.length > 0;
       if (filter === "errors") {
         return errCount > 0;
       }
@@ -49,10 +47,10 @@ export function LevelList({ files, selectedIndex, onSelect, search, onSearchChan
         return warnCount > 0;
       }
       if (filter === "layoutOk") {
-        return layoutOk;
+        return f.data.BoardLayout.length > 0;
       }
       if (filter === "layoutBad") {
-        return f.data.BoardLayout.length > 0 && f.data.BoardLayout.length !== f.data.TotalCards;
+        return f.data.BoardLayout.length === 0;
       }
       return true;
     });
@@ -69,8 +67,8 @@ export function LevelList({ files, selectedIndex, onSelect, search, onSearchChan
         <option value="all">全部</option>
         <option value="errors">有错误</option>
         <option value="warnings">有警告</option>
-        <option value="layoutOk">显式布局生效</option>
-        <option value="layoutBad">显式布局未生效</option>
+        <option value="layoutOk">有槽位布局</option>
+        <option value="layoutBad">无槽位布局</option>
       </select>
       <div style={{ overflow: "auto", flex: 1 }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -89,9 +87,7 @@ export function LevelList({ files, selectedIndex, onSelect, search, onSearchChan
               const layoutLabel =
                 f.data.BoardLayout.length === 0
                   ? "自动"
-                  : f.data.BoardLayout.length === f.data.TotalCards
-                    ? "生效"
-                    : "无效";
+                  : `${f.data.BoardLayout.length} 槽`;
               return (
                 <tr
                   key={f.fileName + index}

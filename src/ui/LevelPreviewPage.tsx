@@ -3,6 +3,7 @@ import { computeVisibleRatios } from "../board/boardClickability";
 import { SOURCE_CARD_HEIGHT, SOURCE_CARD_WIDTH } from "../board/boardConstants";
 import { LevelWinConditionMode, RANK_MAX, RANK_MIN, SUIT_CODES } from "../domain/enums";
 import type { LevelConfigData, LevelBoardSlotData } from "../domain/levelTypes";
+import { computeLevelFingerprint, createDeterministicRngFromParts } from "../domain/levelFingerprint";
 import { createGridSlots } from "../board/boardLayoutFactory";
 
 type HandType =
@@ -49,32 +50,17 @@ type RoundInfo = {
   score: number;
 };
 
-type PreviewStatus = "running" | "win" | "fail";
-
-type PreviewSnapshot = {
-  cards: PreviewCard[];
-  handIds: string[];
-  rounds: RoundInfo[];
-  score: number;
-  lastHandType: HandType | null;
-  status: PreviewStatus;
-  eliminateRange: EliminateRange;
-  objectiveCounts: Record<string, number>;
-  itemStorageLeft: number;
-  itemShuffleLeft: number;
-  itemAddWildLeft: number;
-  storedCard: PreviewCard | null;
-  storageMode: "idle" | "pick";
-  shuffleCount: number;
-  addWildCount: number;
-};
-
 interface Props {
   level: LevelConfigData;
   onClose: () => void;
 }
 
 type EliminateRange = "all" | "clickable" | "locked";
+
+const PREVIEW_SALT_INITIAL = "LevelEditorWeb.preview.initialDeal.v1";
+const PREVIEW_SALT_SHUFFLE = "LevelEditorWeb.preview.shuffle.v1";
+const PREVIEW_SALT_ELIM_RULE = "LevelEditorWeb.preview.eliminateRule.v1";
+const PREVIEW_SALT_ELIM_LEGACY = "LevelEditorWeb.preview.eliminateLegacy.v1";
 
 function rankLabel(rank: number): string {
   if (rank <= 10) {
@@ -129,23 +115,14 @@ function buildDeck(level: LevelConfigData): Array<{ suit: string; rank: number }
   return deck;
 }
 
-function makeRng(seed: number): () => number {
-  let a = (seed >>> 0) || 0x9e3779b9;
-  return () => {
-    let t = (a += 0x6d2b79f5) >>> 0;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 function pickRandom<T>(arr: T[], rnd: () => number): T {
   const i = Math.floor(rnd() * arr.length);
   return arr[Math.max(0, Math.min(arr.length - 1, i))];
 }
 
 function buildInitialCards(level: LevelConfigData): PreviewCard[] {
-  const rnd = makeRng(level.Seed);
+  const fp = computeLevelFingerprint(level);
+  const rnd = createDeterministicRngFromParts(level.Seed, fp, PREVIEW_SALT_INITIAL);
   const layout = level.BoardLayout.length > 0 ? level.BoardLayout : createGridSlots(level.TotalCards);
   const deck = buildDeck(level);
   const fixedUsed = new Set<string>();
@@ -412,59 +389,14 @@ function computeBounds(cards: PreviewCard[]): { minX: number; maxX: number; minY
   let minY = Infinity;
   let maxY = -Infinity;
   for (const c of cards) {
+    const viewY = -c.y;
     minX = Math.min(minX, c.x - hw);
     maxX = Math.max(maxX, c.x + hw);
-    minY = Math.min(minY, c.y - hh);
-    maxY = Math.max(maxY, c.y + hh);
+    minY = Math.min(minY, viewY - hh);
+    maxY = Math.max(maxY, viewY + hh);
   }
   const pad = 40;
   return { minX: minX - pad, maxX: maxX + pad, minY: minY - pad, maxY: maxY + pad };
-}
-
-function handScore(cards: PreviewCard[]): { handType: HandType; sum: number; multiplier: number; score: number } | null {
-  if (cards.length !== 5) {
-    return null;
-  }
-  const evalRes = evaluateHandWithJokers(cards);
-  const multiplier = HAND_MULTIPLIER[evalRes.handType] + evalRes.multiplierBonus;
-  return {
-    handType: evalRes.handType,
-    sum: evalRes.sum,
-    multiplier,
-    score: evalRes.sum * multiplier,
-  };
-}
-
-function findBestCompletion(held: PreviewCard[], candidates: PreviewCard[], need: number): { cards: PreviewCard[]; info: NonNullable<ReturnType<typeof handScore>> } | null {
-  if (need < 0 || candidates.length < need) {
-    return null;
-  }
-  if (need === 0) {
-    const info = handScore(held);
-    return info ? { cards: [], info } : null;
-  }
-  const limited = candidates.slice(0, 18);
-  let best: { cards: PreviewCard[]; info: NonNullable<ReturnType<typeof handScore>> } | null = null;
-  let visited = 0;
-  const pick: PreviewCard[] = [];
-  const dfs = (start: number) => {
-    if (visited > 6000) return;
-    if (pick.length === need) {
-      visited++;
-      const info = handScore([...held, ...pick]);
-      if (info && (!best || info.score > best.info.score || (info.score === best.info.score && info.sum > best.info.sum))) {
-        best = { cards: [...pick], info };
-      }
-      return;
-    }
-    for (let i = start; i < limited.length; i++) {
-      pick.push(limited[i]);
-      dfs(i + 1);
-      pick.pop();
-    }
-  };
-  dfs(0);
-  return best;
 }
 
 export function LevelPreviewPage({ level, onClose }: Props) {
@@ -474,7 +406,7 @@ export function LevelPreviewPage({ level, onClose }: Props) {
   const [rounds, setRounds] = useState<RoundInfo[]>([]);
   const [score, setScore] = useState(0);
   const [lastHandType, setLastHandType] = useState<HandType | null>(null);
-  const [status, setStatus] = useState<PreviewStatus>("running");
+  const [status, setStatus] = useState<"running" | "win" | "fail">("running");
   const [eliminateRange, setEliminateRange] = useState<EliminateRange>("all");
   const [objectiveCounts, setObjectiveCounts] = useState<Record<string, number>>({});
   const [itemStorageLeft, setItemStorageLeft] = useState(() => Math.max(0, level.ItemStorage));
@@ -484,7 +416,6 @@ export function LevelPreviewPage({ level, onClose }: Props) {
   const [storageMode, setStorageMode] = useState<"idle" | "pick">("idle");
   const [shuffleCount, setShuffleCount] = useState(0);
   const [addWildCount, setAddWildCount] = useState(0);
-  const [history, setHistory] = useState<PreviewSnapshot[]>([]);
 
   const activeCards = useMemo(() => cards.filter((c) => !c.removed), [cards]);
   const activeCardsForDraw = useMemo(
@@ -508,23 +439,6 @@ export function LevelPreviewPage({ level, onClose }: Props) {
   const clickable = useMemo(() => new Set(activeCards.filter((_, i) => visibleRatios[i]?.clickable).map((c) => c.id)), [activeCards, visibleRatios]);
 
   const handCards = useMemo(() => handIds.map((id) => cards.find((c) => c.id === id)).filter(Boolean) as PreviewCard[], [handIds, cards]);
-  const clickableCards = useMemo(() => activeCards.filter((c) => clickable.has(c.id)), [activeCards, clickable]);
-  const bestCompletion = useMemo(() => {
-    const need = 5 - handCards.length;
-    if (need < 0 || status !== "running") {
-      return null;
-    }
-    return findBestCompletion(handCards, clickableCards, need);
-  }, [clickableCards, handCards, status]);
-  const roughRemainingMaxScore = useMemo(() => {
-    const available = [...handCards, ...activeCards].filter((c) => c.kind !== "normal" || (c.rank >= RANK_MIN && c.rank <= RANK_MAX));
-    let estimate = 0;
-    for (let i = 0; i + 4 < available.length; i += 5) {
-      const info = handScore(available.slice(i, i + 5));
-      estimate += info?.score ?? 0;
-    }
-    return estimate;
-  }, [activeCards, handCards]);
   const vb = useMemo(() => {
     const b = computeBounds(initialCards);
     const w = Math.max(160, b.maxX - b.minX);
@@ -533,77 +447,6 @@ export function LevelPreviewPage({ level, onClose }: Props) {
   }, [initialCards]);
 
   const remaining = activeCards.length;
-
-  const makeSnapshot = useCallback(
-    (): PreviewSnapshot => ({
-      cards: cards.map((c) => ({ ...c })),
-      handIds: [...handIds],
-      rounds: rounds.map((r) => ({ ...r })),
-      score,
-      lastHandType,
-      status,
-      eliminateRange,
-      objectiveCounts: { ...objectiveCounts },
-      itemStorageLeft,
-      itemShuffleLeft,
-      itemAddWildLeft,
-      storedCard: storedCard ? { ...storedCard } : null,
-      storageMode,
-      shuffleCount,
-      addWildCount,
-    }),
-    [
-      addWildCount,
-      cards,
-      eliminateRange,
-      handIds,
-      itemAddWildLeft,
-      itemShuffleLeft,
-      itemStorageLeft,
-      lastHandType,
-      objectiveCounts,
-      rounds,
-      score,
-      shuffleCount,
-      status,
-      storageMode,
-      storedCard,
-    ],
-  );
-
-  const pushHistory = useCallback(() => {
-    const snapshot = makeSnapshot();
-    setHistory((prev) => [...prev.slice(-49), snapshot]);
-  }, [makeSnapshot]);
-
-  const restoreSnapshot = useCallback((snapshot: PreviewSnapshot) => {
-    setCards(snapshot.cards.map((c) => ({ ...c })));
-    setHandIds([...snapshot.handIds]);
-    setRounds(snapshot.rounds.map((r) => ({ ...r })));
-    setScore(snapshot.score);
-    setLastHandType(snapshot.lastHandType);
-    setStatus(snapshot.status);
-    setEliminateRange(snapshot.eliminateRange);
-    setObjectiveCounts({ ...snapshot.objectiveCounts });
-    setItemStorageLeft(snapshot.itemStorageLeft);
-    setItemShuffleLeft(snapshot.itemShuffleLeft);
-    setItemAddWildLeft(snapshot.itemAddWildLeft);
-    setStoredCard(snapshot.storedCard ? { ...snapshot.storedCard } : null);
-    setStorageMode(snapshot.storageMode);
-    setShuffleCount(snapshot.shuffleCount);
-    setAddWildCount(snapshot.addWildCount);
-  }, []);
-
-  const onUndoStep = useCallback(() => {
-    setHistory((prev) => {
-      const snapshot = prev[prev.length - 1];
-      if (!snapshot) {
-        return prev;
-      }
-      restoreSnapshot(snapshot);
-      return prev.slice(0, -1);
-    });
-  }, [restoreSnapshot]);
 
   const onRestart = useCallback(() => {
     setCards(initialCards.map((c) => ({ ...c })));
@@ -621,7 +464,6 @@ export function LevelPreviewPage({ level, onClose }: Props) {
     setStorageMode("idle");
     setShuffleCount(0);
     setAddWildCount(0);
-    setHistory([]);
   }, [initialCards, level.ItemAddWild, level.ItemShuffle, level.ItemStorage]);
 
   const canUseItems = status === "running";
@@ -629,27 +471,25 @@ export function LevelPreviewPage({ level, onClose }: Props) {
     if (!canUseItems) return;
     if (itemStorageLeft <= 0) return;
     if (storedCard) return;
-    pushHistory();
     setStorageMode((m) => (m === "pick" ? "idle" : "pick"));
-  }, [canUseItems, itemStorageLeft, pushHistory, storedCard]);
+  }, [canUseItems, itemStorageLeft, storedCard]);
 
   const onReleaseStored = useCallback(() => {
     if (!canUseItems) return;
     if (!storedCard) return;
     if (handIds.length >= 5) return;
-    pushHistory();
     setHandIds((h) => [...h, storedCard.id]);
     setStoredCard(null);
-  }, [canUseItems, handIds.length, pushHistory, storedCard]);
+  }, [canUseItems, storedCard, handIds.length]);
 
   const onUseShuffle = useCallback(() => {
     if (!canUseItems) return;
     if (itemShuffleLeft <= 0) return;
-    pushHistory();
     setItemShuffleLeft((n) => Math.max(0, n - 1));
     const nextCount = shuffleCount + 1;
     setShuffleCount(nextCount);
-    const rnd = makeRng((level.Seed ^ 0x5147_2026 ^ nextCount) >>> 0);
+    const fp = computeLevelFingerprint(level);
+    const rnd = createDeterministicRngFromParts(level.Seed, fp, PREVIEW_SALT_SHUFFLE, [nextCount]);
     const remain = cards.filter((c) => !c.removed);
     const positions = remain.map((c) => ({ x: c.x, y: c.y, layer: c.layer }));
     for (let i = positions.length - 1; i > 0; i--) {
@@ -661,13 +501,12 @@ export function LevelPreviewPage({ level, onClose }: Props) {
     const updatedRemain = remain.map((c, i) => ({ ...c, x: positions[i].x, y: positions[i].y, layer: positions[i].layer }));
     const remainById = new Map(updatedRemain.map((c) => [c.id, c]));
     setCards((prev) => prev.map((c) => remainById.get(c.id) ?? c));
-  }, [canUseItems, itemShuffleLeft, level.Seed, pushHistory, shuffleCount, cards]);
+  }, [canUseItems, itemShuffleLeft, level, shuffleCount, cards]);
 
   const onUseAddWild = useCallback(() => {
     if (!canUseItems) return;
     if (itemAddWildLeft <= 0) return;
     if (handIds.length >= 5) return;
-    pushHistory();
     setItemAddWildLeft((n) => Math.max(0, n - 1));
     const nextCount = addWildCount + 1;
     setAddWildCount(nextCount);
@@ -675,7 +514,7 @@ export function LevelPreviewPage({ level, onClose }: Props) {
     const bonus: PreviewCard = { id, x: 0, y: 0, layer: 0, kind: "jokerWild", suit: "N", rank: 0, isFixed: false, removed: true };
     setCards((prev) => [...prev, bonus]);
     setHandIds((h) => [...h, id]);
-  }, [addWildCount, canUseItems, handIds.length, itemAddWildLeft, pushHistory]);
+  }, [canUseItems, itemAddWildLeft, handIds.length, addWildCount]);
 
   const objectives = useMemo(
     () => level.Objectives.filter((o) => o && o.Count > 0 && typeof o.HandType === "string"),
@@ -706,7 +545,8 @@ export function LevelPreviewPage({ level, onClose }: Props) {
       return false;
     };
     const applyElimination = (removeCount: number, ruleRange: string, layers: number[], excludeFixed: boolean, excludeJokers: boolean, salt: number) => {
-      const rnd = makeRng((level.Seed ^ (rounds.length + 1) ^ total ^ salt) >>> 0);
+      const fp = computeLevelFingerprint(level);
+      const rnd = createDeterministicRngFromParts(level.Seed, fp, PREVIEW_SALT_ELIM_RULE, [rounds.length + 1, total, salt]);
       const candidatesAll = after.filter((c) => !c.removed);
       let candidates = candidatesAll;
       if (ruleRange === "Clickable") candidates = candidates.filter((c) => clickable.has(c.id));
@@ -726,7 +566,8 @@ export function LevelPreviewPage({ level, onClose }: Props) {
     // Back-compat: if no rules configured, keep old behavior but use preview dropdown.
     if (eliminationRules.length === 0) {
       if (evalRes.handType === "HighCard" || pairStreakTrigger) {
-        const rnd = makeRng((level.Seed ^ (rounds.length + 1) ^ total ^ 0x53a9) >>> 0);
+        const fp = computeLevelFingerprint(level);
+        const rnd = createDeterministicRngFromParts(level.Seed, fp, PREVIEW_SALT_ELIM_LEGACY, [rounds.length + 1, total, 0x53a9]);
         const candidatesAll = after.filter((c) => !c.removed);
         const candidates =
           eliminateRange === "all"
@@ -797,7 +638,6 @@ export function LevelPreviewPage({ level, onClose }: Props) {
     if (!picked) {
       return;
     }
-    pushHistory();
     if (storageMode === "pick") {
       if (storedCard) {
         setStorageMode("idle");
@@ -846,17 +686,6 @@ export function LevelPreviewPage({ level, onClose }: Props) {
     settleRound(nextCards, pickedCards);
   };
 
-  const onAutoCompleteRound = () => {
-    if (status !== "running" || !bestCompletion) {
-      return;
-    }
-    pushHistory();
-    const chosenIds = new Set(bestCompletion.cards.map((c) => c.id));
-    const nextCards = cards.map((c) => (chosenIds.has(c.id) ? { ...c, removed: true } : c));
-    const pickedCards = [...handCards, ...bestCompletion.cards];
-    settleRound(nextCards, pickedCards);
-  };
-
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 12, padding: 10, borderBottom: "1px solid var(--border)" }}>
@@ -866,12 +695,6 @@ export function LevelPreviewPage({ level, onClose }: Props) {
         <strong>关卡预览模式</strong>
         <button type="button" onClick={onRestart}>
           重玩
-        </button>
-        <button type="button" onClick={onUndoStep} disabled={history.length === 0}>
-          撤回一步
-        </button>
-        <button type="button" onClick={onAutoCompleteRound} disabled={!bestCompletion || status !== "running"}>
-          自动完成当前轮
         </button>
         <span>得分：{score}</span>
         <span>目标：{level.TargetScore}</span>
@@ -912,8 +735,9 @@ export function LevelPreviewPage({ level, onClose }: Props) {
           <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", background: "#0a0d12", height: "100%" }}>
             <svg width="100%" height="100%" viewBox={vb}>
               {activeCardsForDraw.map((c) => {
+                const viewY = -c.y;
                 const rx = c.x - SOURCE_CARD_WIDTH / 2;
-                const ry = c.y - SOURCE_CARD_HEIGHT / 2;
+                const ry = viewY - SOURCE_CARD_HEIGHT / 2;
                 const can = clickable.has(c.id);
                 const href = cardSpriteHref(c);
                 return (
@@ -945,23 +769,6 @@ export function LevelPreviewPage({ level, onClose }: Props) {
           </div>
         </main>
         <aside style={{ width: 340, borderLeft: "1px solid var(--border)", padding: 10, display: "flex", flexDirection: "column", gap: 10 }}>
-          <div className="panel">
-            <div style={{ marginBottom: 6, fontWeight: 600 }}>当前轮提示</div>
-            {bestCompletion ? (
-              <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
-                <div>
-                  潜在最佳：<strong>{bestCompletion.info.handType}</strong>，{bestCompletion.info.sum} x {bestCompletion.info.multiplier} ={" "}
-                  <strong>{bestCompletion.info.score}</strong>
-                </div>
-                <div style={{ color: "var(--muted)" }}>
-                  建议补牌：{bestCompletion.cards.length ? bestCompletion.cards.map((c) => `${c.suit}${rankLabel(c.rank)}`).join(" / ") : "无需补牌"}
-                </div>
-                <div style={{ color: "var(--muted)" }}>剩余理论最高分粗估：{roughRemainingMaxScore}</div>
-              </div>
-            ) : (
-              <div style={{ color: "var(--muted)", fontSize: 12 }}>当前可点击牌不足以补满 5 张，或预览已结束。</div>
-            )}
-          </div>
           <div className="panel">
             <div style={{ marginBottom: 6, fontWeight: 600 }}>收集栏（5）</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
