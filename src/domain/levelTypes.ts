@@ -32,6 +32,23 @@ export interface RandomEliminationRule {
   ExcludeJokers: boolean;
 }
 
+export interface BoardSafeAreaConfig {
+  Left: number;
+  Right: number;
+  Top: number;
+  Bottom: number;
+  SoftInset: number;
+}
+
+/** Mirrors Unity GameplaySceneController / LevelBoardLayoutEditor runtime board half bounds. */
+export const DEFAULT_BOARD_SAFE_AREA: BoardSafeAreaConfig = {
+  Left: -6.2,
+  Right: 6.2,
+  Top: 6.0,
+  Bottom: -6.0,
+  SoftInset: 0.4,
+};
+
 /** Matches TrojanGame.Gameplay.LevelConfigData — PascalCase for Unity JsonUtility */
 export interface LevelConfigData {
   Id: number;
@@ -52,6 +69,7 @@ export interface LevelConfigData {
   ItemShuffle: number;
   ItemAddWild: number;
   RandomEliminationRules: RandomEliminationRule[];
+  BOARD_SAFE_AREA: BoardSafeAreaConfig;
   BoardLayout: LevelBoardSlotData[];
   Objectives: LevelObjectiveData[];
 }
@@ -101,6 +119,7 @@ export function normalizeLevelConfig(raw: unknown): LevelConfigData | null {
     ItemShuffle: coerceInt(o.ItemShuffle, 0),
     ItemAddWild: coerceInt(o.ItemAddWild, 0),
     RandomEliminationRules: normalizeRandomEliminationRules(o.RandomEliminationRules),
+    BOARD_SAFE_AREA: normalizeBoardSafeArea(o.BOARD_SAFE_AREA),
     BoardLayout: boardLayout,
     Objectives: normalizeObjectives(o.Objectives),
   };
@@ -115,6 +134,32 @@ function coerceInt(v: unknown, fallback: number): number {
     return Number.isFinite(n) ? n : fallback;
   }
   return fallback;
+}
+
+function coerceNumber(v: unknown, fallback: number): number {
+  if (typeof v === "number" && Number.isFinite(v)) {
+    return v;
+  }
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  return fallback;
+}
+
+function normalizeBoardSafeArea(v: unknown): BoardSafeAreaConfig {
+  const source = v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  const left = coerceNumber(source.Left, DEFAULT_BOARD_SAFE_AREA.Left);
+  const right = coerceNumber(source.Right, DEFAULT_BOARD_SAFE_AREA.Right);
+  const top = coerceNumber(source.Top, DEFAULT_BOARD_SAFE_AREA.Top);
+  const bottom = coerceNumber(source.Bottom, DEFAULT_BOARD_SAFE_AREA.Bottom);
+  return {
+    Left: Math.min(left, right),
+    Right: Math.max(left, right),
+    Top: Math.max(top, bottom),
+    Bottom: Math.min(top, bottom),
+    SoftInset: Math.max(0, coerceNumber(source.SoftInset, DEFAULT_BOARD_SAFE_AREA.SoftInset)),
+  };
 }
 
 function normalizeBoardSlots(v: unknown): LevelBoardSlotData[] {

@@ -10,17 +10,19 @@ import {
 } from "../board/boardConstants";
 import { createGridSlots, snapToInt, sortSlotsByLayer } from "../board/boardLayoutFactory";
 import { getBoardSafetyState, type SourcePoint } from "../board/boardSafety";
-import type { LevelBoardSlotData } from "../domain/levelTypes";
+import { DEFAULT_BOARD_SAFE_AREA, type BoardSafeAreaConfig, type LevelBoardSlotData } from "../domain/levelTypes";
 import { BOARD_SUIT_CODES, RANK_MAX, RANK_MIN, type BoardSuitCode } from "../domain/enums";
 
 interface Props {
   totalCards: number;
   isSingleDeck: boolean;
   boardLayout: LevelBoardSlotData[];
+  boardSafeArea: BoardSafeAreaConfig;
   specialWild: number;
   specialMultiplier: number;
   specialSuit: number;
   onChange: (next: LevelBoardSlotData[]) => void;
+  onBoardSafeAreaChange: (next: BoardSafeAreaConfig) => void;
   focusSlotIndex?: number | null;
   onFocusSlotConsumed?: () => void;
 }
@@ -177,10 +179,12 @@ export function BoardEditor({
   totalCards,
   isSingleDeck,
   boardLayout,
+  boardSafeArea,
   specialWild,
   specialMultiplier,
   specialSuit,
   onChange,
+  onBoardSafeAreaChange,
   focusSlotIndex,
   onFocusSlotConsumed,
 }: Props) {
@@ -213,7 +217,7 @@ export function BoardEditor({
     return computeVisibleRatios(boardLayout);
   }, [boardLayout]);
 
-  const safetyState = useMemo(() => getBoardSafetyState(boardLayout), [boardLayout]);
+  const safetyState = useMemo(() => getBoardSafetyState(boardLayout, boardSafeArea), [boardLayout, boardSafeArea]);
 
   const placedSpecialCounts = useMemo(() => {
     let wild = 0;
@@ -330,6 +334,13 @@ export function BoardEditor({
       onChange(next);
     },
     [boardLayout, onChange],
+  );
+
+  const updateBoardSafeArea = useCallback(
+    (patch: Partial<BoardSafeAreaConfig>) => {
+      onBoardSafeAreaChange({ ...boardSafeArea, ...patch });
+    },
+    [boardSafeArea, onBoardSafeAreaChange],
   );
 
   const toggleSpecialOnSlot = useCallback(
@@ -490,24 +501,61 @@ export function BoardEditor({
         {specialPicker ? <span style={{ color: "var(--accent)", fontSize: 12 }}>已进入放置模式：单击槽位放置/取消</span> : null}
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          吸附 X
-          <input type="number" value={snapX} onChange={(e) => setSnapX(Math.max(1, parseFloat(e.target.value) || 1))} />
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          吸附 Y
-          <input type="number" value={snapY} onChange={(e) => setSnapY(Math.max(1, parseFloat(e.target.value) || 1))} />
-        </label>
-        <button
-          type="button"
-          onClick={() => {
-            setSnapX(DEFAULT_SNAP_STEP_X);
-            setSnapY(DEFAULT_SNAP_STEP_Y);
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            吸附 X
+            <input type="number" value={snapX} onChange={(e) => setSnapX(Math.max(1, parseFloat(e.target.value) || 1))} />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            吸附 Y
+            <input type="number" value={snapY} onChange={(e) => setSnapY(Math.max(1, parseFloat(e.target.value) || 1))} />
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              setSnapX(DEFAULT_SNAP_STEP_X);
+              setSnapY(DEFAULT_SNAP_STEP_Y);
+            }}
+          >
+            恢复默认吸附
+          </button>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+            alignItems: "center",
+            justifyContent: "flex-end",
+            marginLeft: "auto",
           }}
         >
-          恢复默认吸附
-        </button>
+          <span style={{ color: "var(--muted)", fontSize: 12 }}>BOARD_SAFE_AREA</span>
+          {(
+            [
+              ["Left", "左"],
+              ["Right", "右"],
+              ["Top", "上"],
+              ["Bottom", "下"],
+              ["SoftInset", "软边距"],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              {label}
+              <input
+                type="number"
+                step={0.1}
+                value={boardSafeArea[key]}
+                onChange={(e) => updateBoardSafeArea({ [key]: parseFloat(e.target.value) || 0 })}
+                style={{ width: key === "SoftInset" ? 74 : 64 }}
+              />
+            </label>
+          ))}
+          <button type="button" onClick={() => onBoardSafeAreaChange({ ...DEFAULT_BOARD_SAFE_AREA })}>
+            恢复默认安全区
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>

@@ -1699,10 +1699,12 @@ export default function App() {
                 totalCards={current.data.TotalCards}
                 isSingleDeck={current.data.IsSingleDeck}
                 boardLayout={current.data.BoardLayout}
+                boardSafeArea={current.data.BOARD_SAFE_AREA}
                 specialWild={current.data.SpecialWild}
                 specialMultiplier={current.data.SpecialMultiplier}
                 specialSuit={current.data.SpecialSuit}
                 onChange={(layout) => updateData((d) => ({ ...d, BoardLayout: layout, TotalCards: layout.length }))}
+                onBoardSafeAreaChange={(safeArea) => updateData((d) => ({ ...d, BOARD_SAFE_AREA: safeArea }))}
                 focusSlotIndex={focusSlotIndex}
                 onFocusSlotConsumed={() => setFocusSlotIndex(null)}
               />

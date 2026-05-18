@@ -18,6 +18,7 @@ const MERGE_KEYS = [
   "ItemStorage",
   "ItemShuffle",
   "ItemAddWild",
+  "BOARD_SAFE_AREA",
   "BoardLayout",
   "Objectives",
   "Id",

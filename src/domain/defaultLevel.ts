@@ -1,5 +1,5 @@
 import { LevelWinConditionMode } from "./enums";
-import type { LevelConfigData } from "./levelTypes";
+import { DEFAULT_BOARD_SAFE_AREA, type LevelConfigData } from "./levelTypes";
 
 /** Mirrors LevelEditorStorage.CreateDefaultLevel */
 export function createDefaultLevel(levelId: number): LevelConfigData {
@@ -20,6 +20,7 @@ export function createDefaultLevel(levelId: number): LevelConfigData {
     ItemStorage: 1,
     ItemShuffle: 0,
     ItemAddWild: 0,
+    BOARD_SAFE_AREA: { ...DEFAULT_BOARD_SAFE_AREA },
     RandomEliminationRules: [
       { Enabled: true, Trigger: "OnHighCard", RemoveCount: 3, Range: "All", Layers: [], ExcludeFixedCards: true, ExcludeJokers: false },
       { Enabled: true, Trigger: "OnPairStreak2", RemoveCount: 3, Range: "All", Layers: [], ExcludeFixedCards: true, ExcludeJokers: false },

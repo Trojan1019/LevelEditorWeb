@@ -124,7 +124,7 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
       }
     }
 
-    messages.push(...validateBoardSafety(layout));
+    messages.push(...validateBoardSafety(layout, level.BOARD_SAFE_AREA));
 
     const keyCounts = new Map<string, number>();
     const fixedCardCounts = new Map<string, number>();

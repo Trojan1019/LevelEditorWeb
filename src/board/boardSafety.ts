@@ -1,4 +1,4 @@
-import type { LevelBoardSlotData } from "../domain/levelTypes";
+import { DEFAULT_BOARD_SAFE_AREA, type BoardSafeAreaConfig, type LevelBoardSlotData } from "../domain/levelTypes";
 
 export interface RuntimePoint {
   x: number;
@@ -24,14 +24,7 @@ export const BOARD_SAFETY_CONFIG = {
   runtimeTargetBoardStepX: 1.45,
   runtimeTargetBoardStepY: 1.18,
   runtimeBoardCardSize: { x: 1, y: 1.57 },
-  hardArea: [
-    { x: -5.4, y: 4.8 },
-    { x: 5.4, y: 4.8 },
-    { x: 5.4, y: -4.8 },
-    { x: -5.4, y: -4.8 },
-  ] as RuntimePoint[],
-  softInset: 0.4,
-  minRecommendedFitScale: 0.85,
+  minRecommendedFitScale: 0.95,
 };
 
 export function calculateBoardProjection(slots: LevelBoardSlotData[]): BoardProjection {
@@ -140,10 +133,23 @@ export function arePointsInsideQuad(points: RuntimePoint[], quad: RuntimePoint[]
   return points.every((point) => isPointInQuad(point, quad));
 }
 
-export function getBoardSafetyState(slots: LevelBoardSlotData[]) {
+export function boardSafeAreaToRuntimeQuad(safeArea: BoardSafeAreaConfig = DEFAULT_BOARD_SAFE_AREA): RuntimePoint[] {
+  const left = Math.min(safeArea.Left, safeArea.Right);
+  const right = Math.max(safeArea.Left, safeArea.Right);
+  const top = Math.max(safeArea.Top, safeArea.Bottom);
+  const bottom = Math.min(safeArea.Top, safeArea.Bottom);
+  return [
+    { x: left, y: top },
+    { x: right, y: top },
+    { x: right, y: bottom },
+    { x: left, y: bottom },
+  ];
+}
+
+export function getBoardSafetyState(slots: LevelBoardSlotData[], safeArea: BoardSafeAreaConfig = DEFAULT_BOARD_SAFE_AREA) {
   const projection = calculateBoardProjection(slots);
-  const hardArea = BOARD_SAFETY_CONFIG.hardArea;
-  const softArea = createInsetQuad(hardArea, BOARD_SAFETY_CONFIG.softInset);
+  const hardArea = boardSafeAreaToRuntimeQuad(safeArea);
+  const softArea = createInsetQuad(hardArea, Math.max(0, safeArea.SoftInset));
   const slotStates = slots.map((slot) => {
     const corners = getRuntimeCardCorners(projectSlotToRuntime(slot, projection));
     return {
@@ -164,12 +170,15 @@ export function getBoardSafetyState(slots: LevelBoardSlotData[]) {
   };
 }
 
-export function validateBoardSafety(slots: LevelBoardSlotData[]): { severity: "error" | "warning"; message: string }[] {
+export function validateBoardSafety(
+  slots: LevelBoardSlotData[],
+  safeArea: BoardSafeAreaConfig = DEFAULT_BOARD_SAFE_AREA,
+): { severity: "error" | "warning"; message: string }[] {
   if (slots.length === 0) {
     return [];
   }
 
-  const state = getBoardSafetyState(slots);
+  const state = getBoardSafetyState(slots, safeArea);
   const messages: { severity: "error" | "warning"; message: string }[] = [];
   if (state.projection.fitScale < BOARD_SAFETY_CONFIG.minRecommendedFitScale) {
     messages.push({
