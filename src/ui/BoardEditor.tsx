@@ -162,6 +162,7 @@ export function BoardEditor({
   onFocusSlotConsumed,
 }: Props) {
   const [selected, setSelected] = useState<number>(-1);
+  const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [pickerIndex, setPickerIndex] = useState<number>(-1);
   const [specialPicker, setSpecialPicker] = useState<"" | "Wild" | "Multiplier" | "SuitH" | "SuitD" | "SuitC" | "SuitS">("");
   const [visibleLayers, setVisibleLayers] = useState<number[] | null>(null);
@@ -170,13 +171,19 @@ export function BoardEditor({
   const [snapX, setSnapX] = useState(() => loadSnap(SNAP_X_STORAGE_KEY, DEFAULT_SNAP_STEP_X));
   const [snapY, setSnapY] = useState(() => loadSnap(SNAP_Y_STORAGE_KEY, DEFAULT_SNAP_STEP_Y));
   const dragRef = useRef<{
-    index: number;
+    indices: number[];
     startClientX: number;
     startClientY: number;
-    startX: number;
-    startY: number;
+    starts: { index: number; X: number; Y: number }[];
     svg: SVGSVGElement;
   } | null>(null);
+  const selectRectRef = useRef<{
+    startClientX: number;
+    startClientY: number;
+    svg: SVGSVGElement;
+  } | null>(null);
+  const [selectionRect, setSelectionRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [clipboardSlots, setClipboardSlots] = useState<LevelBoardSlotData[]>([]);
 
   const layoutStatus =
     boardLayout.length === 0
@@ -221,6 +228,7 @@ export function BoardEditor({
   }, [boardLayout]);
 
   const visibleLayerSet = useMemo(() => (visibleLayers ? new Set(visibleLayers) : null), [visibleLayers]);
+  const selectedSet = useMemo(() => new Set(selectedIndices), [selectedIndices]);
 
   const displayedIndices = useMemo(() => {
     const out: number[] = [];
@@ -305,6 +313,19 @@ export function BoardEditor({
     [boardLayout, onChange],
   );
 
+  const setSingleSelection = useCallback((index: number) => {
+    setSelected(index);
+    setSelectedIndices(index >= 0 ? [index] : []);
+  }, []);
+
+  const updateSlots = useCallback(
+    (indices: number[], mapper: (slot: LevelBoardSlotData, index: number) => LevelBoardSlotData) => {
+      const indexSet = new Set(indices);
+      onChange(boardLayout.map((slot, index) => (indexSet.has(index) ? mapper(slot, index) : { ...slot })));
+    },
+    [boardLayout, onChange],
+  );
+
   const toggleSpecialOnSlot = useCallback(
     (slotIndex: number) => {
       if (!specialPicker) {
@@ -343,10 +364,10 @@ export function BoardEditor({
     if (focusSlotIndex == null || focusSlotIndex < 0 || focusSlotIndex >= boardLayout.length) {
       return;
     }
-    setSelected(focusSlotIndex);
+    setSingleSelection(focusSlotIndex);
     onFocusSlotConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot focus from validation panel
-  }, [focusSlotIndex, boardLayout.length]);
+  }, [focusSlotIndex, boardLayout.length, setSingleSelection]);
 
   useEffect(() => {
     saveSnap(SNAP_X_STORAGE_KEY, snapX);
@@ -361,25 +382,71 @@ export function BoardEditor({
   }, []);
 
   const onPointerDownSlot = (e: React.PointerEvent, index: number) => {
-    setSelected(index);
+    const alreadySelected = selectedSet.has(index);
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      const next = alreadySelected ? selectedIndices.filter((i) => i !== index) : [...selectedIndices, index].sort((a, b) => a - b);
+      setSelected(index);
+      setSelectedIndices(next);
+      dragRef.current = null;
+      return;
+    }
+    if (!alreadySelected) {
+      setSingleSelection(index);
+    } else {
+      setSelected(index);
+    }
     (e.currentTarget as SVGGElement).setPointerCapture(e.pointerId);
     const svg = (e.currentTarget as SVGGElement).ownerSVGElement;
     if (!svg) {
       return;
     }
-    const s = boardLayout[index];
+    const dragIndices = alreadySelected ? selectedIndices : [index];
     dragRef.current = {
-      index,
+      indices: dragIndices,
       startClientX: e.clientX,
       startClientY: e.clientY,
-      startX: s.X,
-      startY: s.Y,
+      starts: dragIndices.map((i) => ({ index: i, X: boardLayout[i].X, Y: boardLayout[i].Y })),
       svg,
     };
   };
 
+  const svgPointFromClient = (svg: SVGSVGElement, clientX: number, clientY: number): DOMPoint | null => {
+    const ctm = svg.getScreenCTM();
+    if (!ctm) {
+      return null;
+    }
+    return new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+  };
+
+  const onPointerDownCanvas = (e: React.PointerEvent<SVGRectElement>) => {
+    const svg = e.currentTarget.ownerSVGElement;
+    if (!svg) {
+      return;
+    }
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = null;
+    selectRectRef.current = { startClientX: e.clientX, startClientY: e.clientY, svg };
+    setSelectionRect(null);
+    if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      setSingleSelection(-1);
+    }
+  };
+
   const onPointerMove = (e: React.PointerEvent) => {
     const d = dragRef.current;
+    const selecting = selectRectRef.current;
+    if (!d && !selecting) return;
+    if (selecting) {
+      const p0 = svgPointFromClient(selecting.svg, selecting.startClientX, selecting.startClientY);
+      const p1 = svgPointFromClient(selecting.svg, e.clientX, e.clientY);
+      if (!p0 || !p1) return;
+      const x1 = Math.min(p0.x, p1.x);
+      const y1 = Math.min(p0.y, p1.y);
+      const x2 = Math.max(p0.x, p1.x);
+      const y2 = Math.max(p0.y, p1.y);
+      setSelectionRect({ x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
+      return;
+    }
     if (!d) {
       return;
     }
@@ -393,16 +460,34 @@ export function BoardEditor({
     const p1 = new DOMPoint(e.clientX, e.clientY).matrixTransform(inv);
     const dx = p1.x - p0.x;
     const dy = p1.y - p0.y;
-    const nx = snapToInt(d.startX + dx, snapX, SNAP_ORIGIN_X);
-    const ny = snapToInt(d.startY + dy, snapY, SNAP_ORIGIN_Y);
-    updateSlot(d.index, { X: nx, Y: ny });
+    const next = boardLayout.map((slot) => ({ ...slot }));
+    for (const start of d.starts) {
+      next[start.index] = {
+        ...next[start.index],
+        X: snapToInt(start.X + dx, snapX, SNAP_ORIGIN_X),
+        Y: snapToInt(start.Y + dy, snapY, SNAP_ORIGIN_Y),
+      };
+    }
+    onChange(next);
   };
 
   const onPointerUp = () => {
+    if (selectRectRef.current && selectionRect) {
+      const r = selectionRect;
+      const hits = displayedIndices.filter((i) => {
+        const s = boardLayout[i];
+        return s.X >= r.x && s.X <= r.x + r.w && s.Y >= r.y && s.Y <= r.y + r.h;
+      });
+      setSelectedIndices(hits);
+      setSelected(hits[hits.length - 1] ?? -1);
+    }
     dragRef.current = null;
+    selectRectRef.current = null;
+    setSelectionRect(null);
   };
 
   const selectedSlot = selected >= 0 && selected < boardLayout.length ? boardLayout[selected] : null;
+  const activeSelection = selectedIndices.filter((i) => i >= 0 && i < boardLayout.length);
   const pickerSlot = pickerIndex >= 0 && pickerIndex < boardLayout.length ? boardLayout[pickerIndex] : null;
 
   return (
@@ -530,7 +615,7 @@ export function BoardEditor({
           onClick={() => {
             const next = [...boardLayout, { X: 0, Y: 0, Layer: 0, Suit: "N" as const, Rank: 0 }];
             onChange(next);
-            setSelected(next.length - 1);
+            setSingleSelection(next.length - 1);
           }}
         >
           添加槽位
@@ -563,6 +648,73 @@ export function BoardEditor({
           }}
         >
           按层排序
+        </button>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+        <span style={{ color: "var(--muted)", fontSize: 12 }}>已选 {activeSelection.length} 个</span>
+        <button type="button" disabled={activeSelection.length === 0} onClick={() => setClipboardSlots(activeSelection.map((i) => ({ ...boardLayout[i] })))}>
+          复制选择
+        </button>
+        <button
+          type="button"
+          disabled={clipboardSlots.length === 0}
+          onClick={() => {
+            const next = [
+              ...boardLayout,
+              ...clipboardSlots.map((slot) => ({
+                ...slot,
+                X: slot.X + snapX,
+                Y: slot.Y + snapY,
+              })),
+            ];
+            const start = boardLayout.length;
+            const pasted = clipboardSlots.map((_, i) => start + i);
+            onChange(next);
+            setSelectedIndices(pasted);
+            setSelected(pasted[pasted.length - 1] ?? -1);
+          }}
+        >
+          粘贴
+        </button>
+        <button
+          type="button"
+          disabled={activeSelection.length < 2}
+          onClick={() => {
+            const minX = Math.min(...activeSelection.map((i) => boardLayout[i].X));
+            updateSlots(activeSelection, (slot) => ({ ...slot, X: minX }));
+          }}
+        >
+          X轴对齐
+        </button>
+        <button
+          type="button"
+          disabled={activeSelection.length < 2}
+          onClick={() => {
+            const minY = Math.min(...activeSelection.map((i) => boardLayout[i].Y));
+            updateSlots(activeSelection, (slot) => ({ ...slot, Y: minY }));
+          }}
+        >
+          Y轴对齐
+        </button>
+        <button
+          type="button"
+          disabled={activeSelection.length < 2}
+          onClick={() => {
+            const centerX = activeSelection.reduce((sum, i) => sum + boardLayout[i].X, 0) / activeSelection.length;
+            updateSlots(activeSelection, (slot) => ({ ...slot, X: Math.round(centerX * 2 - slot.X) }));
+          }}
+        >
+          水平镜像
+        </button>
+        <button
+          type="button"
+          disabled={activeSelection.length < 2}
+          onClick={() => {
+            const centerY = activeSelection.reduce((sum, i) => sum + boardLayout[i].Y, 0) / activeSelection.length;
+            updateSlots(activeSelection, (slot) => ({ ...slot, Y: Math.round(centerY * 2 - slot.Y) }));
+          }}
+        >
+          垂直镜像
         </button>
       </div>
       {selectedSlot ? (
@@ -665,7 +817,7 @@ export function BoardEditor({
               const next = [...boardLayout];
               next.splice(selected + 1, 0, { ...copy, X: copy.X + snapX });
               onChange(next);
-              setSelected(selected + 1);
+              setSingleSelection(selected + 1);
             }}
           >
             复制槽位
@@ -675,7 +827,8 @@ export function BoardEditor({
             onClick={() => {
               const next = boardLayout.filter((_, i) => i !== selected);
               onChange(next);
-              setSelected(Math.min(selected, next.length - 1));
+              const nextSelected = Math.min(selected, next.length - 1);
+              setSingleSelection(nextSelected);
               if (pickerIndex === selected) {
                 setPickerIndex(-1);
               } else if (pickerIndex > selected) {
@@ -708,6 +861,14 @@ export function BoardEditor({
             </pattern>
           </defs>
           <rect x={vb.x} y={vb.y} width={vb.w} height={vb.h} fill="url(#grid)" />
+          <rect
+            x={vb.x}
+            y={vb.y}
+            width={vb.w}
+            height={vb.h}
+            fill="transparent"
+            onPointerDown={onPointerDownCanvas}
+          />
           <line
             x1={vb.x}
             y1={SNAP_ORIGIN_Y}
@@ -742,7 +903,7 @@ export function BoardEditor({
             const ry = s.Y - h / 2;
             const clickable = clickInfo ? clickInfo[i]?.clickable : true;
             const ratio = clickInfo ? clickInfo[i]?.ratio : 1;
-            const isSel = i === selected;
+            const isSel = selectedSet.has(i);
             const spriteHref = s.Special ? specialSpriteHref(s.Special) : cardSpriteHref(s);
             return (
               <g
@@ -824,6 +985,18 @@ VisibleRatio: ${(ratio * 100).toFixed(0)}%`}
               </g>
             );
           })}
+          {selectionRect ? (
+            <rect
+              x={selectionRect.x}
+              y={selectionRect.y}
+              width={selectionRect.w}
+              height={selectionRect.h}
+              fill="rgba(91, 140, 255, 0.18)"
+              stroke="var(--accent)"
+              strokeDasharray="4 3"
+              pointerEvents="none"
+            />
+          ) : null}
         </svg>
       </div>
       {pickerSlot ? (
@@ -940,7 +1113,7 @@ VisibleRatio: ${(ratio * 100).toFixed(0)}%`}
         </div>
       ) : null}
       <div style={{ color: "var(--muted)", fontSize: 11 }}>
-        单击或拖拽移动槽位；双击槽位选择固定牌面，N/0 表示不固定。遮挡可点预览基于当前槽位直接计算（可见比例 ≥ 70%）。
+        单击或拖拽移动槽位；Shift/Ctrl 单击多选，空白处拖拽框选，拖动任一已选槽位会整体移动。双击槽位选择固定牌面，N/0 表示不固定。遮挡可点预览基于当前槽位直接计算（可见比例 ≥ 70%）。
         坐标与数据一致：预览为浏览器 SVG 惯例，<strong>Y 轴向下为正</strong>（数值越大越靠画面下方）；青色虚线为数据 Y = {SNAP_ORIGIN_Y} 的基准行。若运行时世界坐标 Y 向上，请在客户端对 BoardLayout.Y 做符号换算。
       </div>
     </div>

@@ -82,6 +82,9 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
   }
 
   if (level.ItemStorage < 0 || level.ItemShuffle < 0 || level.ItemAddWild < 0) {
+    messages.push({ severity: "error", message: "道具初始次数不能为负数。" });
+  }
+
   // Random elimination rules sanity
   const rules = level.RandomEliminationRules ?? [];
   for (let i = 0; i < rules.length; i++) {
@@ -93,8 +96,6 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
     if (r.Range === "Layers" && (!r.Layers || r.Layers.length === 0)) {
       messages.push({ severity: "warning", message: `RandomEliminationRules[${i}] 的 Range=Layers 但未配置 Layers，等同于不消除。` });
     }
-  }
-    messages.push({ severity: "error", message: "道具初始次数不能为负数。" });
   }
 
   const specialTotal = level.SpecialWild + level.SpecialMultiplier + level.SpecialSuit;
