@@ -1,6 +1,6 @@
 import { BOARD_SUIT_CODES, LevelWinConditionMode, RANK_MAX, RANK_MIN, SUIT_CODES, isValidHandType } from "../domain/enums";
 import { buildMultisetFromBoardLayout, buildPoolMultiset, objectiveReachabilityMessages } from "../domain/poolStats";
-import type { LevelConfigData, LevelFileSummary } from "../domain/levelTypes";
+import type { BoardSafeAreaConfig, LevelConfigData, LevelFileSummary } from "../domain/levelTypes";
 import { validateBoardSafety } from "../board/boardSafety";
 
 export type ValidationSeverity = "error" | "warning" | "info";
@@ -17,7 +17,11 @@ const validBoardSuitCodes = new Set<string>(BOARD_SUIT_CODES);
  * Mirrors TrojanGame.Editor.LevelEditorValidator.Validate
  * @param allLevels — summaries used for duplicate Id check (include current file)
  */
-export function validateLevel(level: LevelConfigData | null, allLevels: LevelFileSummary[]): ValidationMessage[] {
+export function validateLevel(
+  level: LevelConfigData | null,
+  allLevels: LevelFileSummary[],
+  boardSafeArea?: BoardSafeAreaConfig,
+): ValidationMessage[] {
   const messages: ValidationMessage[] = [];
 
   if (!level) {
@@ -124,7 +128,7 @@ export function validateLevel(level: LevelConfigData | null, allLevels: LevelFil
       }
     }
 
-    messages.push(...validateBoardSafety(layout, level.BOARD_SAFE_AREA));
+    messages.push(...validateBoardSafety(layout, boardSafeArea ?? level.BOARD_SAFE_AREA));
 
     const keyCounts = new Map<string, number>();
     const fixedCardCounts = new Map<string, number>();

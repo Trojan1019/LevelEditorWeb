@@ -1,4 +1,5 @@
 import type { LoadedLevelFile } from "../storage/fsLevelStorage";
+import type { BoardSafeAreaConfig } from "../domain/levelTypes";
 import type { ValidationMessage } from "../validation/validateLevel";
 import { validateLevel } from "../validation/validateLevel";
 
@@ -12,13 +13,18 @@ interface Props {
   onSearchChange: (v: string) => void;
   filter: ListFilter;
   onFilterChange: (f: ListFilter) => void;
+  boardSafeArea: BoardSafeAreaConfig;
 }
 
-function summarizeFile(f: LoadedLevelFile, allSummaries: { fileName: string; levelId: number }[]): ValidationMessage[] {
-  return validateLevel(f.data, allSummaries.map((s) => ({ fileName: s.fileName, levelId: s.levelId })));
+function summarizeFile(
+  f: LoadedLevelFile,
+  allSummaries: { fileName: string; levelId: number }[],
+  boardSafeArea: BoardSafeAreaConfig,
+): ValidationMessage[] {
+  return validateLevel(f.data, allSummaries.map((s) => ({ fileName: s.fileName, levelId: s.levelId })), boardSafeArea);
 }
 
-export function LevelList({ files, selectedIndex, onSelect, search, onSearchChange, filter, onFilterChange }: Props) {
+export function LevelList({ files, selectedIndex, onSelect, search, onSearchChange, filter, onFilterChange, boardSafeArea }: Props) {
   const summaries = files.map((f) => ({
     fileName: f.fileName,
     levelId: f.data.Id,
@@ -26,7 +32,7 @@ export function LevelList({ files, selectedIndex, onSelect, search, onSearchChan
 
   const q = search.trim().toLowerCase();
   const rows = files
-    .map((f, index) => ({ f, index, msgs: summarizeFile(f, summaries) }))
+    .map((f, index) => ({ f, index, msgs: summarizeFile(f, summaries, boardSafeArea) }))
     .filter(({ f }) => {
       if (!q) {
         return true;

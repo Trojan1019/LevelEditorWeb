@@ -3,9 +3,11 @@ import { LevelWinConditionMode, RANK_MAX, RANK_MIN, SUIT_CODES, HAND_TYPES } fro
 import { createDefaultLevel } from "./domain/defaultLevel";
 import { cloneLevel } from "./domain/levelClone";
 import {
+  DEFAULT_BOARD_SAFE_AREA,
   levelFileNameForId,
   normalizeLevelConfig,
   parseLevelIdFromFileName,
+  type BoardSafeAreaConfig,
   type LevelConfigData,
   type LevelFileSummary,
 } from "./domain/levelTypes";
@@ -120,9 +122,29 @@ function cacheKeyForFile(fileName: string): string {
 }
 
 const SESSION_FILES_KEY = "joker.levelEditor.sessionFiles.v1";
+const BOARD_SAFE_AREA_KEY = "joker.levelEditor.boardSafeArea.v1";
 const DIRECTORY_HANDLE_DB = "joker.levelEditor.directoryHandle.v1";
 const DIRECTORY_HANDLE_STORE = "handles";
 const DIRECTORY_HANDLE_KEY = "lastLevelDirectory";
+
+function loadBoardSafeAreaPreference(): BoardSafeAreaConfig {
+  try {
+    const raw = localStorage.getItem(BOARD_SAFE_AREA_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    const normalized = normalizeLevelConfig({ Id: 1, BOARD_SAFE_AREA: parsed });
+    return normalized?.BOARD_SAFE_AREA ?? { ...DEFAULT_BOARD_SAFE_AREA };
+  } catch {
+    return { ...DEFAULT_BOARD_SAFE_AREA };
+  }
+}
+
+function saveBoardSafeAreaPreference(boardSafeArea: BoardSafeAreaConfig): void {
+  try {
+    localStorage.setItem(BOARD_SAFE_AREA_KEY, JSON.stringify(boardSafeArea));
+  } catch {
+    // ignore
+  }
+}
 
 function tryLoadCachedLevel(fileName: string): LevelConfigData | null {
   try {
@@ -288,6 +310,7 @@ export default function App() {
   const selectedIndexRef = useRef(0);
   const [seedDraft, setSeedDraft] = useState("");
   const [previewLevel, setPreviewLevel] = useState<LevelConfigData | null>(null);
+  const [boardSafeArea, setBoardSafeArea] = useState<BoardSafeAreaConfig>(() => loadBoardSafeAreaPreference());
   const editHistoryRef = useRef<Record<string, EditHistory>>({});
 
   const historyKeyOf = useCallback((fileName: string) => fileName, []);
@@ -379,9 +402,13 @@ export default function App() {
     return { min, max, recommended };
   }, [current]);
   const validation = useMemo(
-    () => validateLevel(current?.data ?? null, summaries),
-    [current, summaries],
+    () => validateLevel(current?.data ?? null, summaries, boardSafeArea),
+    [boardSafeArea, current, summaries],
   );
+
+  useEffect(() => {
+    saveBoardSafeAreaPreference(boardSafeArea);
+  }, [boardSafeArea]);
 
   const reachabilitySource = useMemo(() => {
     if (!current) {
@@ -613,7 +640,7 @@ export default function App() {
       setStatus("请先选择工程目录（Assets/Game/Level）。");
       return;
     }
-    const errs = validateLevel(current.data, summaries).filter((m) => m.severity === "error");
+    const errs = validateLevel(current.data, summaries, boardSafeArea).filter((m) => m.severity === "error");
     if (errs.length > 0) {
       setStatus("存在校验错误，请修正后再保存。");
       return;
@@ -671,7 +698,7 @@ export default function App() {
     const invalid = files
       .map((f) => ({
         fileName: f.fileName,
-        errors: validateLevel(f.data, summaries).filter((m) => m.severity === "error"),
+        errors: validateLevel(f.data, summaries, boardSafeArea).filter((m) => m.severity === "error"),
       }))
       .filter((x) => x.errors.length > 0);
     if (invalid.length > 0) {
@@ -972,6 +999,7 @@ export default function App() {
             onSearchChange={setSearch}
             filter={listFilter}
             onFilterChange={setListFilter}
+            boardSafeArea={boardSafeArea}
           />
         </aside>
         <main style={{ flex: 1, minWidth: 0, overflow: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1699,12 +1727,12 @@ export default function App() {
                 totalCards={current.data.TotalCards}
                 isSingleDeck={current.data.IsSingleDeck}
                 boardLayout={current.data.BoardLayout}
-                boardSafeArea={current.data.BOARD_SAFE_AREA}
+                boardSafeArea={boardSafeArea}
                 specialWild={current.data.SpecialWild}
                 specialMultiplier={current.data.SpecialMultiplier}
                 specialSuit={current.data.SpecialSuit}
                 onChange={(layout) => updateData((d) => ({ ...d, BoardLayout: layout, TotalCards: layout.length }))}
-                onBoardSafeAreaChange={(safeArea) => updateData((d) => ({ ...d, BOARD_SAFE_AREA: safeArea }))}
+                onBoardSafeAreaChange={setBoardSafeArea}
                 focusSlotIndex={focusSlotIndex}
                 onFocusSlotConsumed={() => setFocusSlotIndex(null)}
               />
